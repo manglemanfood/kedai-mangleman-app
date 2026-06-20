@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { usePIN } from '../components/PINModal'
+
 
 const formatRp = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 const STATUS_FLOW = ['Baru', 'Diproses', 'Dikemas', 'Dikirim', 'Selesai']
@@ -16,7 +16,6 @@ export default function RekapOrder() {
   const [editOrder, setEditOrder] = useState(null)
   const [editForm, setEditForm] = useState({})
   const [saving, setSaving] = useState(false)
-  const confirmDelete = usePIN('rekap-order')
 
   const fetch = useCallback(async () => {
     setLoading(true)
@@ -53,8 +52,7 @@ export default function RekapOrder() {
   }
 
   const deleteOrder = async (o) => {
-    const ok = await confirmDelete(`order ${o.order_number || o.id.slice(0,6)} - ${o.customer_name}`)
-    if (!ok) return
+    if (!window.confirm(`Hapus order ${o.order_number || o.id.slice(0,6)} - ${o.customer_name}?`)) return
     await supabase.from('order_items').delete().eq('order_id', o.id)
     await supabase.from('orders').delete().eq('id', o.id)
     if (selected?.id === o.id) setSelected(null)
