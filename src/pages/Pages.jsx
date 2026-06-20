@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { usePINConfirm } from '../components/PINModal'
 
 const formatRp = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 
@@ -11,6 +12,7 @@ export function Resep() {
   const [selected, setSelected] = useState(null)
   const [newIngredient, setNewIngredient] = useState({ raw_material_id: '', qty_used: '', unit: 'gram' })
   const [loading, setLoading] = useState(true)
+  const { requestPIN: reqPINResep, PINGate: PINGateResep } = usePINConfirm('resep')
 
   useEffect(() => {
     Promise.all([
@@ -45,7 +47,9 @@ export function Resep() {
     setNewIngredient({ raw_material_id: '', qty_used: '', unit: 'gram' })
   }
 
-  const removeIngredient = async (recipeId, productId) => {
+  const removeIngredient = async (recipeId, productId, materialName) => {
+    const ok = await reqPINResep(`bahan "${materialName}" dari resep`)
+    if (!ok) return
     await supabase.from('recipes').delete().eq('id', recipeId)
     const { data } = await supabase.from('recipes').select('*').eq('product_id', productId)
     setRecipes(r => ({ ...r, [productId]: data }))
@@ -53,6 +57,7 @@ export function Resep() {
 
   return (
     <div>
+      <PINGateResep />
       <div className="page-header"><h1>Manajemen Resep 📖</h1><p>Atur bahan-bahan untuk setiap menu</p></div>
       <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '1rem' }}>
         <div className="card" style={{ padding: 0, height: 'fit-content' }}>
@@ -80,7 +85,7 @@ export function Resep() {
                         <td>{r.material_name}</td>
                         <td>{r.qty_used}</td>
                         <td>{r.unit}</td>
-                        <td><button className="btn btn-sm btn-danger" onClick={() => removeIngredient(r.id, selected.id)}>🗑</button></td>
+                        <td><button className="btn btn-sm btn-danger" onClick={() => removeIngredient(r.id, selected.id, r.material_name)}>🗑</button></td>
                       </tr>
                     ))}
                   </tbody>
