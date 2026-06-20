@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { usePIN } from '../components/PINModal'
+
 
 const formatRp = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 
@@ -12,7 +12,6 @@ export function Resep() {
   const [selected, setSelected] = useState(null)
   const [newIngredient, setNewIngredient] = useState({ raw_material_id: '', qty_used: '', unit: 'gram' })
   const [loading, setLoading] = useState(true)
-  const confirmDelete = usePIN('resep')
 
   useEffect(() => {
     Promise.all([
@@ -48,8 +47,7 @@ export function Resep() {
   }
 
   const removeIngredient = async (recipeId, productId, materialName) => {
-    const ok = await confirmDelete(`bahan "${materialName}" dari resep`)
-    if (!ok) return
+    if (!window.confirm(`Hapus bahan "${materialName}" dari resep?`)) return
     await supabase.from('recipes').delete().eq('id', recipeId)
     const { data } = await supabase.from('recipes').select('*').eq('product_id', productId)
     setRecipes(r => ({ ...r, [productId]: data }))
