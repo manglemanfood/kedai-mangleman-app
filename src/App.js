@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
-import { PINProvider } from './components/PINModal'
 import OrderForm from './pages/OrderForm'
 import Dashboard from './pages/Dashboard'
 import RekapOrder from './pages/RekapOrder'
@@ -44,7 +43,6 @@ function LoginRedirect() {
 export default function App() {
   return (
     <BrowserRouter>
-      <PINProvider>
         <Routes>
           <Route path="/order" element={<OrderForm />} />
           <Route path="/login" element={<LoginRedirect />} />
@@ -62,7 +60,6 @@ export default function App() {
           <Route path="/menu" element={<PrivateRoute><Layout><ManajemenMenu /></Layout></PrivateRoute>} />
           <Route path="/import" element={<PrivateRoute><Layout><ImportCSV /></Layout></PrivateRoute>} />
         </Routes>
-      </PINProvider>
     </BrowserRouter>
   )
 }
