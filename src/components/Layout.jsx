@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
 
 const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: '🏠' },
@@ -22,12 +23,20 @@ export default function Layout({ children }) {
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
+  const logout = async () => {
+    if (!window.confirm('Yakin mau keluar?')) return
+    await supabase.auth.signOut()
+    navigate('/login')
+  }
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
       {sidebarOpen && (
         <div onClick={() => setSidebarOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 40 }} />
       )}
+
       <aside style={{ width: 240, background: '#1A2E0A', display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, bottom: 0, left: 0, zIndex: 50, overflowY: 'auto', transition: 'transform 0.25s' }} className="sidebar">
+        {/* Logo */}
         <div style={{ padding: '1.25rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 28 }}>🍱</span>
@@ -38,6 +47,8 @@ export default function Layout({ children }) {
           </div>
           <div style={{ marginTop: 8, fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Internal Dashboard</div>
         </div>
+
+        {/* Nav */}
         <nav style={{ flex: 1, padding: '0.75rem 0' }}>
           {navItems.map((item, idx) => {
             if (item.divider) return <div key={idx} style={{ margin: '8px 1.25rem', borderTop: '1px solid rgba(255,255,255,0.1)' }} />
@@ -52,19 +63,30 @@ export default function Layout({ children }) {
             )
           })}
         </nav>
-        <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-          <button onClick={() => window.open('/order', '_blank')} style={{ width: '100%', padding: '8px', background: '#E8A838', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+
+        {/* Footer */}
+        <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <button onClick={() => window.open('/order', '_blank')}
+            style={{ width: '100%', padding: '8px', background: '#E8A838', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
             🔗 Buka Form Order Customer
+          </button>
+          <button onClick={logout}
+            style={{ width: '100%', padding: '8px', background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, fontSize: 12, cursor: 'pointer' }}>
+            🚪 Keluar
           </button>
         </div>
       </aside>
+
+      {/* Main */}
       <div style={{ marginLeft: 240, flex: 1, display: 'flex', flexDirection: 'column' }} className="main-content">
         <header style={{ display: 'none', alignItems: 'center', gap: 12, padding: '12px 1rem', background: '#fff', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 30 }} className="mobile-header">
           <button onClick={() => setSidebarOpen(true)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer' }}>☰</button>
           <span style={{ fontWeight: 700, color: '#E8A838' }}>🍱 Kedai MangLeman</span>
+          <button onClick={logout} style={{ marginLeft: 'auto', background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>🚪</button>
         </header>
         <main style={{ flex: 1, padding: '1.5rem', maxWidth: 1200, width: '100%' }}>{children}</main>
       </div>
+
       <style>{`
         @media (max-width: 768px) {
           .sidebar { transform: translateX(-100%); }
