@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { usePINConfirm } from '../components/PINModal'
+import { usePIN } from '../components/PINModal'
 
 const formatRp = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 const CATEGORIES = ['Bahan Baku', 'Kemasan', 'Ongkir Supplier', 'Operasional', 'Gaji', 'Lainnya']
@@ -17,7 +17,7 @@ export default function Pengeluaran() {
   const [filterDate, setFilterDate] = useState('')
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
-  const { requestPIN, PINGate } = usePINConfirm('pengeluaran')
+  const confirmDelete = usePIN('pengeluaran')
 
   const fetchExpenses = async () => {
     setLoading(true)
@@ -45,7 +45,7 @@ export default function Pengeluaran() {
   }
 
   const remove = async (e) => {
-    const ok = await requestPIN(`pengeluaran "${e.description}"`)
+    const ok = await confirmDelete(`pengeluaran "${e.description}"`)
     if (!ok) return
     await supabase.from('expenses').delete().eq('id', e.id)
     fetchExpenses()
@@ -55,7 +55,7 @@ export default function Pengeluaran() {
 
   return (
     <div>
-      <PINGate />
+      
       <div className="page-header flex-between">
         <div><h1>Pengeluaran Toko 💸</h1><p>Catat semua pengeluaran operasional</p></div>
         <button className="btn btn-primary" onClick={openAdd}>+ Input Pengeluaran</button>
