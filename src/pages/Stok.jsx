@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { usePIN } from '../components/PINModal'
+
 
 const formatRp = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 const UNITS = ['kg', 'gram', 'liter', 'ml', 'pcs', 'sachet', 'bungkus', 'buah', 'siung', 'lembar']
@@ -14,7 +14,6 @@ export default function Stok() {
   const [form, setForm] = useState({ name: '', unit: 'kg', stock_qty: '', min_stock: '', last_price: '' })
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
-  const confirmDelete = usePIN('stok')
 
   const fetchAll = async () => {
     setLoading(true)
@@ -42,15 +41,13 @@ export default function Stok() {
   }
 
   const deleteMaterial = async (m) => {
-    const ok = await confirmDelete(`bahan "${m.name}"`)
-    if (!ok) return
+    if (!window.confirm(`Hapus bahan "${m.name}"?`)) return
     await supabase.from('raw_materials').delete().eq('id', m.id)
     fetchAll()
   }
 
   const deleteProduct = async (p) => {
-    const ok = await confirmDelete(`menu "${p.name}"`)
-    if (!ok) return
+    if (!window.confirm(`Hapus menu "${p.name}"?`)) return
     await supabase.from('products').delete().eq('id', p.id)
     fetchAll()
   }
