@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { usePINConfirm } from '../components/PINModal'
+import { usePIN } from '../components/PINModal'
 
 const formatRp = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 const SEGMENT_CONFIG = {
@@ -20,7 +20,7 @@ export default function CRM() {
   const [editItem, setEditItem] = useState(null)
   const [editForm, setEditForm] = useState({})
   const [saving, setSaving] = useState(false)
-  const { requestPIN, PINGate } = usePINConfirm('crm')
+  const confirmDelete = usePIN('crm')
 
   const fetchCustomers = () => {
     supabase.from('customers').select('*').order('total_spent', { ascending: false }).then(({ data }) => {
@@ -49,7 +49,7 @@ export default function CRM() {
   }
 
   const deleteCustomer = async (c) => {
-    const ok = await requestPIN(`pelanggan "${c.name}"`)
+    const ok = await confirmDelete(`pelanggan "${c.name}"`)
     if (!ok) return
     await supabase.from('customers').delete().eq('id', c.id)
     if (selected?.id === c.id) setSelected(null)
@@ -66,7 +66,7 @@ export default function CRM() {
 
   return (
     <div>
-      <PINGate />
+      
       <div className="page-header"><h1>CRM Pelanggan 👥</h1><p>Kelola hubungan dan segmentasi pelanggan</p></div>
 
       <div className="grid-4 mb-2">
