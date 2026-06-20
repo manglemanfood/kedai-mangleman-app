@@ -12,6 +12,7 @@ import LaporanLabaRugi from './pages/LaporanLabaRugi'
 import Target from './pages/Target'
 import AnalisaBisnis from './pages/AnalisaBisnis'
 import ManajemenMenu from './pages/ManajemenMenu'
+import ImportCSV from './pages/ImportCSV'
 import Layout from './components/Layout'
 import './App.css'
 
@@ -19,11 +20,8 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* PUBLIC: Form order customer */}
         <Route path="/order" element={<OrderForm />} />
         <Route path="/" element={<Navigate to="/order" replace />} />
-
-        {/* INTERNAL: Dashboard */}
         <Route path="/dashboard" element={<Layout><Dashboard /></Layout>} />
         <Route path="/rekap-order" element={<Layout><RekapOrder /></Layout>} />
         <Route path="/crm" element={<Layout><CRM /></Layout>} />
@@ -35,6 +33,7 @@ export default function App() {
         <Route path="/target" element={<Layout><Target /></Layout>} />
         <Route path="/analisa" element={<Layout><AnalisaBisnis /></Layout>} />
         <Route path="/menu" element={<Layout><ManajemenMenu /></Layout>} />
+        <Route path="/import" element={<Layout><ImportCSV /></Layout>} />
       </Routes>
     </BrowserRouter>
   )
