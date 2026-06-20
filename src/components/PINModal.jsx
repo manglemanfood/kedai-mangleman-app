@@ -2,12 +2,12 @@ import React, { useState, useEffect, useRef } from 'react'
 
 // PIN per modul - bisa diubah sesuai keinginan
 export const MODULE_PINS = {
-  'rekap-order': '1234',
-  'crm': '2345',
-  'pengeluaran': '3456',
-  'stok': '4567',
-  'resep': '5678',
-  'hpp': '6789',
+  'rekap-order': '8080',
+  'crm': '8080',
+  'pengeluaran': '8080',
+  'stok': '8080',
+  'resep': '8080',
+  'hpp': '8080',
 }
 
 export const MODULE_NAMES = {
