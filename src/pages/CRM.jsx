@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { usePIN } from '../components/PINModal'
+
 
 const formatRp = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 const SEGMENT_CONFIG = {
@@ -20,7 +20,6 @@ export default function CRM() {
   const [editItem, setEditItem] = useState(null)
   const [editForm, setEditForm] = useState({})
   const [saving, setSaving] = useState(false)
-  const confirmDelete = usePIN('crm')
 
   const fetchCustomers = () => {
     supabase.from('customers').select('*').order('total_spent', { ascending: false }).then(({ data }) => {
@@ -49,8 +48,7 @@ export default function CRM() {
   }
 
   const deleteCustomer = async (c) => {
-    const ok = await confirmDelete(`pelanggan "${c.name}"`)
-    if (!ok) return
+    if (!window.confirm(`Hapus pelanggan "${c.name}"?`)) return
     await supabase.from('customers').delete().eq('id', c.id)
     if (selected?.id === c.id) setSelected(null)
     fetchCustomers()
