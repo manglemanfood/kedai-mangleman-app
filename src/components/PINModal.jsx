@@ -1,15 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useRef, useCallback, createContext, useContext } from 'react'
 
-export const MODULE_PINS = {
-  'rekap-order': '1234',
-  'crm': '1234',
-  'pengeluaran': '1234',
-  'stok': '1234',
-  'resep': '1234',
-  'hpp': '1234',
-}
+export const MASTER_PIN = '1234' // Ganti PIN di sini
 
-export const MODULE_NAMES = {
+const MODULE_NAMES = {
   'rekap-order': 'Rekap Order',
   'crm': 'CRM Pelanggan',
   'pengeluaran': 'Pengeluaran',
@@ -18,168 +11,162 @@ export const MODULE_NAMES = {
   'hpp': 'Kalkulator HPP',
 }
 
-// ✅ FIX: Gunakan useRef untuk menyimpan resolve, bukan useState
-export function usePINConfirm(module) {
-  const [isOpen, setIsOpen] = useState(false)
-  const [label, setLabel] = useState('')
+// ============================================================
+// CONTEXT — satu modal untuk seluruh app
+// ============================================================
+const PINContext = createContext(null)
+
+export function PINProvider({ children }) {
+  const [state, setState] = useState({ open: false, label: '', module: '' })
   const resolveRef = useRef(null)
 
-  const requestPIN = useCallback((labelText = 'data ini') => {
+  const askPIN = useCallback((label, module) => {
     return new Promise((resolve) => {
       resolveRef.current = resolve
-      setLabel(labelText)
-      setIsOpen(true)
+      setState({ open: true, label, module })
     })
   }, [])
 
-  const handleSuccess = useCallback(() => {
-    setIsOpen(false)
-    resolveRef.current?.(true)
-    resolveRef.current = null
+  const confirm = useCallback(() => {
+    setState(s => ({ ...s, open: false }))
+    // Kecil delay biar modal tutup dulu baru action jalan
+    setTimeout(() => {
+      resolveRef.current?.(true)
+      resolveRef.current = null
+    }, 50)
   }, [])
 
-  const handleCancel = useCallback(() => {
-    setIsOpen(false)
-    resolveRef.current?.(false)
-    resolveRef.current = null
+  const cancel = useCallback(() => {
+    setState(s => ({ ...s, open: false }))
+    setTimeout(() => {
+      resolveRef.current?.(false)
+      resolveRef.current = null
+    }, 50)
   }, [])
 
-  const PINGate = useCallback(() => {
-    if (!isOpen) return null
-    return (
-      <PINModal
-        module={module}
-        label={label}
-        onSuccess={handleSuccess}
-        onCancel={handleCancel}
-      />
-    )
-  }, [isOpen, module, label, handleSuccess, handleCancel])
-
-  return { requestPIN, PINGate }
+  return (
+    <PINContext.Provider value={askPIN}>
+      {children}
+      {state.open && (
+        <PINModalUI
+          label={state.label}
+          module={state.module}
+          onSuccess={confirm}
+          onCancel={cancel}
+        />
+      )}
+    </PINContext.Provider>
+  )
 }
 
-// Komponen modal PIN
-export default function PINModal({ module, label, onSuccess, onCancel }) {
-  const [pin, setPin] = useState(['', '', '', ''])
+// Hook yang dipakai di setiap halaman
+export function usePIN(module) {
+  const askPIN = useContext(PINContext)
+  return useCallback((label) => askPIN(label, module), [askPIN, module])
+}
+
+// ============================================================
+// UI MODAL PIN
+// ============================================================
+function PINModalUI({ label, module, onSuccess, onCancel }) {
+  const [digits, setDigits] = useState(['', '', '', ''])
   const [error, setError] = useState('')
   const [shake, setShake] = useState(false)
-  const [attempts, setAttempts] = useState(0)
+  const [tries, setTries] = useState(0)
   const [locked, setLocked] = useState(false)
-  const [lockTimer, setLockTimer] = useState(0)
-  const inputs = useRef([])
-  const attemptsRef = useRef(0)
+  const [countdown, setCountdown] = useState(0)
+  const inputRefs = useRef([])
+  const timerRef = useRef(null)
 
-  useEffect(() => {
-    setTimeout(() => inputs.current[0]?.focus(), 100)
+  React.useEffect(() => {
+    setTimeout(() => inputRefs.current[0]?.focus(), 150)
+    return () => clearTimeout(timerRef.current)
   }, [])
 
-  useEffect(() => {
-    if (locked && lockTimer > 0) {
-      const t = setTimeout(() => setLockTimer(s => s - 1), 1000)
-      return () => clearTimeout(t)
+  const doShake = () => {
+    setShake(true)
+    setTimeout(() => setShake(false), 500)
+  }
+
+  const startLockout = () => {
+    setLocked(true)
+    setCountdown(30)
+    const tick = (n) => {
+      if (n <= 0) { setLocked(false); setCountdown(0); return }
+      timerRef.current = setTimeout(() => { setCountdown(n - 1); tick(n - 1) }, 1000)
     }
-    if (locked && lockTimer === 0 && lockTimer !== null) setLocked(false)
-  }, [locked, lockTimer])
+    tick(30)
+  }
 
-  const checkPin = useCallback((fullPin) => {
+  const verify = useCallback((pinStr) => {
     if (locked) return
-    const correct = MODULE_PINS[module]
-
-    console.log('Checking PIN:', fullPin, 'vs correct:', correct, 'module:', module)
-
-    if (fullPin === correct) {
+    if (pinStr === MASTER_PIN) {
       setError('')
-      setPin(['', '', '', ''])
       onSuccess()
     } else {
-      attemptsRef.current += 1
-      const newAttempts = attemptsRef.current
-      setAttempts(newAttempts)
-      setShake(true)
-      setTimeout(() => setShake(false), 500)
-      setPin(['', '', '', ''])
-      setTimeout(() => inputs.current[0]?.focus(), 100)
-
-      if (newAttempts >= 3) {
-        setLocked(true)
-        setLockTimer(30)
+      doShake()
+      setDigits(['', '', '', ''])
+      setTimeout(() => inputRefs.current[0]?.focus(), 100)
+      const newTries = tries + 1
+      setTries(newTries)
+      if (newTries >= 3) {
+        startLockout()
         setError('Terlalu banyak percobaan. Tunggu 30 detik.')
       } else {
-        setError(`PIN salah. ${3 - newAttempts} percobaan tersisa.`)
+        setError(`PIN salah. ${3 - newTries} kesempatan tersisa.`)
       }
     }
-  }, [locked, module, onSuccess])
+  }, [locked, tries, onSuccess])
 
-  // Handle input dari keyboard
-  const handleInput = (val, idx) => {
-    if (!/^\d*$/.test(val)) return
-    const digit = val.slice(-1)
-    const newPin = [...pin]
-    newPin[idx] = digit
-    setPin(newPin)
+  // Isi digit dari keyboard
+  const onType = (val, idx) => {
+    if (locked || !/^\d?$/.test(val)) return
+    const next = [...digits]
+    next[idx] = val
+    setDigits(next)
     setError('')
-
-    if (digit && idx < 3) {
-      inputs.current[idx + 1]?.focus()
-    }
-
-    // Auto submit digit ke-4
-    if (idx === 3 && digit) {
-      const fullPin = newPin.join('')
-      if (fullPin.length === 4) {
-        setTimeout(() => checkPin(fullPin), 50)
-      }
+    if (val && idx < 3) inputRefs.current[idx + 1]?.focus()
+    if (val && idx === 3) {
+      const full = next.join('')
+      if (full.length === 4) setTimeout(() => verify(full), 30)
     }
   }
 
-  const handleKeyDown = (e, idx) => {
-    if (e.key === 'Backspace' && !pin[idx] && idx > 0) {
-      inputs.current[idx - 1]?.focus()
-      const newPin = [...pin]
-      newPin[idx - 1] = ''
-      setPin(newPin)
+  const onKey = (e, idx) => {
+    if (e.key === 'Backspace' && !digits[idx] && idx > 0) {
+      const next = [...digits]; next[idx - 1] = ''
+      setDigits(next)
+      inputRefs.current[idx - 1]?.focus()
     }
     if (e.key === 'Enter') {
-      const fullPin = pin.join('')
-      if (fullPin.length === 4) checkPin(fullPin)
+      const full = digits.join('')
+      if (full.length === 4) verify(full)
     }
   }
 
-  // ✅ FIX: Handle numpad click — langsung isi dan cek
-  const handleNumpad = (num) => {
+  // Klik numpad
+  const onNumpad = (num) => {
     if (locked) return
     if (num === '⌫') {
-      // Cari digit terakhir yang terisi
-      let lastIdx = -1
-      for (let i = 3; i >= 0; i--) {
-        if (pin[i] !== '') { lastIdx = i; break }
-      }
-      if (lastIdx >= 0) {
-        const newPin = [...pin]
-        newPin[lastIdx] = ''
-        setPin(newPin)
-        inputs.current[lastIdx]?.focus()
+      let last = -1
+      for (let i = 3; i >= 0; i--) { if (digits[i]) { last = i; break } }
+      if (last >= 0) {
+        const next = [...digits]; next[last] = ''
+        setDigits(next)
+        inputRefs.current[last]?.focus()
       }
       return
     }
-
-    // Cari slot kosong pertama
-    const firstEmpty = pin.findIndex(v => v === '')
-    if (firstEmpty === -1) return
-
-    const newPin = [...pin]
-    newPin[firstEmpty] = String(num)
-    setPin(newPin)
-
-    if (firstEmpty < 3) {
-      inputs.current[firstEmpty + 1]?.focus()
-    }
-
-    // Auto submit saat slot ke-4 terisi
-    if (firstEmpty === 3) {
-      const fullPin = newPin.join('')
-      setTimeout(() => checkPin(fullPin), 50)
+    const emptyIdx = digits.findIndex(d => d === '')
+    if (emptyIdx === -1) return
+    const next = [...digits]
+    next[emptyIdx] = String(num)
+    setDigits(next)
+    setError('')
+    if (emptyIdx < 3) inputRefs.current[emptyIdx + 1]?.focus()
+    if (emptyIdx === 3) {
+      const full = next.join('')
+      setTimeout(() => verify(full), 30)
     }
   }
 
@@ -188,103 +175,87 @@ export default function PINModal({ module, label, onSuccess, onCancel }) {
   return (
     <div style={{
       position: 'fixed', inset: 0,
-      background: 'rgba(0,0,0,0.65)',
-      zIndex: 9999,
+      background: 'rgba(0,0,0,0.7)',
+      zIndex: 99999,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: '1rem',
-      backdropFilter: 'blur(4px)',
     }}>
       <div style={{
-        background: '#fff', borderRadius: 20, padding: '2rem',
-        width: '100%', maxWidth: 340, textAlign: 'center',
-        boxShadow: '0 25px 60px rgba(0,0,0,0.35)',
-        animation: shake ? 'pinShake 0.4s ease' : 'none',
+        background: '#fff', borderRadius: 20, padding: '1.75rem',
+        width: '100%', maxWidth: 320, textAlign: 'center',
+        boxShadow: '0 30px 80px rgba(0,0,0,0.4)',
+        transform: shake ? 'translateX(0)' : undefined,
+        animation: shake ? 'pinShake 0.4s ease' : undefined,
       }}>
-        <div style={{ fontSize: 44, marginBottom: 10 }}>🔐</div>
-        <h3 style={{ fontWeight: 700, fontSize: 17, marginBottom: 4, color: '#1A1A1A' }}>Konfirmasi Manager</h3>
-        <p style={{ fontSize: 13, color: '#888', marginBottom: 6 }}>
-          Masukkan PIN untuk hapus<br /><strong style={{ color: '#1A1A1A' }}>{label}</strong>
-        </p>
-        <div style={{ display: 'inline-block', background: '#FFF3D6', borderRadius: 8, padding: '3px 12px', fontSize: 11, color: '#C8881A', fontWeight: 600, marginBottom: 22 }}>
-          📋 {moduleName}
+        <div style={{ fontSize: 40, marginBottom: 8 }}>🔐</div>
+        <h3 style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>PIN Manager</h3>
+        <p style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>Hapus: <strong style={{ color: '#333' }}>{label}</strong></p>
+        <div style={{ fontSize: 11, background: '#FFF3D6', color: '#C8881A', borderRadius: 6, padding: '3px 10px', display: 'inline-block', marginBottom: 18, fontWeight: 600 }}>
+          {moduleName}
         </div>
 
-        {/* PIN dots input */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginBottom: 18 }}>
-          {pin.map((digit, i) => (
+        {/* Input boxes */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginBottom: 14 }}>
+          {digits.map((d, i) => (
             <input
               key={i}
-              ref={el => inputs.current[i] = el}
+              ref={el => inputRefs.current[i] = el}
               type="password"
               inputMode="numeric"
               maxLength={1}
-              value={digit}
-              onChange={e => handleInput(e.target.value, i)}
-              onKeyDown={e => handleKeyDown(e, i)}
+              value={d}
+              onChange={e => onType(e.target.value, i)}
+              onKeyDown={e => onKey(e, i)}
               disabled={locked}
               style={{
-                width: 54, height: 54,
-                textAlign: 'center', fontSize: 22, fontWeight: 700,
-                border: `2.5px solid ${error ? '#E74C3C' : digit ? '#E8A838' : '#E5E0D8'}`,
-                borderRadius: 12, outline: 'none',
-                background: digit ? '#FFF8ED' : '#F7F5F0',
-                color: '#1A1A1A',
-                transition: 'border-color 0.15s, background 0.15s',
-                cursor: locked ? 'not-allowed' : 'text',
+                width: 52, height: 52, textAlign: 'center',
+                fontSize: 20, fontWeight: 700,
+                border: `2px solid ${error ? '#E74C3C' : d ? '#E8A838' : '#DDD'}`,
+                borderRadius: 10, outline: 'none',
+                background: d ? '#FFFBF0' : '#F8F8F8',
+                transition: 'all 0.15s',
               }}
             />
           ))}
         </div>
 
-        {/* Error */}
-        {error && (
-          <div style={{ background: '#FFE8E8', color: '#C0392B', borderRadius: 8, padding: '8px 12px', fontSize: 13, marginBottom: 14 }}>
-            ⚠️ {error} {locked && lockTimer > 0 && `(${lockTimer}s)`}
+        {/* Error msg */}
+        {(error || locked) && (
+          <div style={{ background: '#FFE8E8', color: '#C0392B', borderRadius: 8, padding: '7px 10px', fontSize: 12, marginBottom: 12 }}>
+            {locked ? `🔒 Terkunci ${countdown}s` : `⚠️ ${error}`}
           </div>
         )}
 
         {/* Numpad */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 14 }}>
-          {[1,2,3,4,5,6,7,8,9,'',0,'⌫'].map((num, i) => (
-            <button
-              key={i}
-              disabled={locked || num === ''}
-              onClick={() => num !== '' && handleNumpad(num)}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 6, marginBottom: 12 }}>
+          {[1,2,3,4,5,6,7,8,9,'',0,'⌫'].map((n, i) => (
+            <button key={i} onClick={() => n !== '' && onNumpad(n)} disabled={locked || n === ''}
               style={{
-                padding: '13px 0',
-                fontSize: num === '⌫' ? 20 : 18,
-                fontWeight: num === '⌫' ? 400 : 600,
-                background: num === '' ? 'transparent' : num === '⌫' ? '#FFE8E8' : '#F7F5F0',
-                border: num === '' ? 'none' : `1px solid ${num === '⌫' ? '#FFCCCC' : '#E5E0D8'}`,
-                borderRadius: 10,
-                cursor: num === '' || locked ? 'default' : 'pointer',
-                color: num === '⌫' ? '#C0392B' : '#1A1A1A',
-                opacity: locked && num !== '' ? 0.4 : 1,
-                transition: 'background 0.1s',
-              }}
-            >
-              {num}
+                padding: '12px 0', fontSize: n === '⌫' ? 18 : 17, fontWeight: 600,
+                background: n === '' ? 'transparent' : n === '⌫' ? '#FFE8E8' : '#F5F5F5',
+                border: n === '' ? 'none' : '1px solid #E8E8E8',
+                borderRadius: 8, cursor: n === '' || locked ? 'default' : 'pointer',
+                color: n === '⌫' ? '#C0392B' : '#222',
+                opacity: locked && n !== '' ? 0.4 : 1,
+              }}>
+              {n}
             </button>
           ))}
         </div>
 
-        <button
-          onClick={onCancel}
-          style={{ width: '100%', padding: '12px', background: '#F0EDE8', color: '#666', border: 'none', borderRadius: 10, fontWeight: 600, cursor: 'pointer', fontSize: 14 }}
-        >
+        <button onClick={onCancel}
+          style={{ width: '100%', padding: '11px', background: '#F0EDE8', color: '#666', border: 'none', borderRadius: 10, fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
           Batal
         </button>
       </div>
 
       <style>{`
         @keyframes pinShake {
-          0%,100% { transform: translateX(0); }
-          15% { transform: translateX(-10px); }
-          30% { transform: translateX(10px); }
-          45% { transform: translateX(-7px); }
-          60% { transform: translateX(7px); }
-          75% { transform: translateX(-4px); }
-          90% { transform: translateX(4px); }
+          0%,100%{transform:translateX(0)}
+          20%{transform:translateX(-8px)}
+          40%{transform:translateX(8px)}
+          60%{transform:translateX(-5px)}
+          80%{transform:translateX(5px)}
         }
       `}</style>
     </div>
