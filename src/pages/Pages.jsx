@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { usePINConfirm } from '../components/PINModal'
+import { usePIN } from '../components/PINModal'
 
 const formatRp = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 
@@ -12,7 +12,7 @@ export function Resep() {
   const [selected, setSelected] = useState(null)
   const [newIngredient, setNewIngredient] = useState({ raw_material_id: '', qty_used: '', unit: 'gram' })
   const [loading, setLoading] = useState(true)
-  const { requestPIN: reqPINResep, PINGate: PINGateResep } = usePINConfirm('resep')
+  const confirmDelete = usePIN('resep')
 
   useEffect(() => {
     Promise.all([
@@ -48,7 +48,7 @@ export function Resep() {
   }
 
   const removeIngredient = async (recipeId, productId, materialName) => {
-    const ok = await reqPINResep(`bahan "${materialName}" dari resep`)
+    const ok = await confirmDelete(`bahan "${materialName}" dari resep`)
     if (!ok) return
     await supabase.from('recipes').delete().eq('id', recipeId)
     const { data } = await supabase.from('recipes').select('*').eq('product_id', productId)
@@ -57,7 +57,7 @@ export function Resep() {
 
   return (
     <div>
-      <PINGateResep />
+      
       <div className="page-header"><h1>Manajemen Resep 📖</h1><p>Atur bahan-bahan untuk setiap menu</p></div>
       <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '1rem' }}>
         <div className="card" style={{ padding: 0, height: 'fit-content' }}>
