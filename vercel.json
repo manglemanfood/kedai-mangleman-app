@@ -1,0 +1,9 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "build",
+  "framework": "create-react-app",
+  "env": {
+    "DISABLE_ESLINT_PLUGIN": "true",
+    "GENERATE_SOURCEMAP": "false"
+  }
+}
