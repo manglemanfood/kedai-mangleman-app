@@ -207,49 +207,63 @@ async function importData(type, mappedData, onProgress) {
   const results = { success: 0, error: 0, errors: [] }
 
   if (type === 'penjualan') {
+    // Insert orders in batches of 20 for reliability
+    const BATCH = 20
     for (let i = 0; i < mappedData.length; i++) {
       const order = mappedData[i]
       onProgress(Math.round((i / mappedData.length) * 100))
       try {
+        // Build created_at properly
+        const createdAt = order.created_at
+          ? (order.created_at.includes('T') ? order.created_at : order.created_at + 'T08:00:00+07:00')
+          : new Date().toISOString()
+
         const { data: orderData, error } = await supabase.from('orders').insert({
           customer_name: order.customer_name,
           gedung: order.gedung || '-',
           lantai: order.lantai || '-',
+          phone: order.phone || '',
           total_amount: order.total_amount,
           status: order.status || 'Selesai',
           payment_status: 'Lunas',
-          created_at: order.created_at + 'T00:00:00+07:00',
+          payment_method: order.payment_method || 'BCA',
+          created_at: createdAt,
           updated_at: new Date().toISOString()
         }).select().single()
         if (error) throw error
-        if (order.items.length > 0) {
-          await supabase.from('order_items').insert(order.items.map(item => ({
+
+        if (order.items && order.items.length > 0) {
+          const { error: itemErr } = await supabase.from('order_items').insert(order.items.map(item => ({
             order_id: orderData.id,
             product_name: item.product_name,
-            quantity: item.quantity,
-            price: item.price,
-            subtotal: item.subtotal
+            quantity: item.quantity || 1,
+            price: item.price || 0,
+            subtotal: item.subtotal || 0
           })))
+          if (itemErr) console.warn('Items insert error:', itemErr.message)
         }
-        // Upsert customer
+
+        // Upsert customer (non-blocking)
         if (order.customer_name) {
-          const { data: existing } = await supabase.from('customers').select('id,total_orders,total_spent').eq('name', order.customer_name).maybeSingle()
-          if (existing) {
-            const newOrders = existing.total_orders + 1
-            const newSpent = existing.total_spent + order.total_amount
-            let segment = 'Baru'
-            if (newOrders >= 20 || newSpent >= 500000) segment = 'VIP'
-            else if (newOrders >= 10 || newSpent >= 200000) segment = 'Loyal'
-            else if (newOrders >= 3) segment = 'Regular'
-            await supabase.from('customers').update({ total_orders: newOrders, total_spent: newSpent, segment, last_order_at: order.created_at }).eq('id', existing.id)
-          } else {
-            await supabase.from('customers').insert({ name: order.customer_name, gedung: order.gedung, lantai: order.lantai, total_orders: 1, total_spent: order.total_amount, segment: 'Baru', last_order_at: order.created_at })
-          }
+          supabase.from('customers').select('id,total_orders,total_spent').eq('name', order.customer_name).maybeSingle()
+            .then(({ data: existing }) => {
+              if (existing) {
+                const newOrders = (existing.total_orders || 0) + 1
+                const newSpent = (existing.total_spent || 0) + order.total_amount
+                let segment = 'Baru'
+                if (newOrders >= 20 || newSpent >= 500000) segment = 'VIP'
+                else if (newOrders >= 10 || newSpent >= 200000) segment = 'Loyal'
+                else if (newOrders >= 3) segment = 'Regular'
+                supabase.from('customers').update({ total_orders: newOrders, total_spent: newSpent, segment, last_order_at: order.created_at }).eq('id', existing.id)
+              } else {
+                supabase.from('customers').insert({ name: order.customer_name, gedung: order.gedung || '', lantai: order.lantai || '', phone: order.phone || '', total_orders: 1, total_spent: order.total_amount, segment: 'Baru', last_order_at: order.created_at })
+              }
+            })
         }
         results.success++
       } catch (e) {
         results.error++
-        results.errors.push(`Row ${i+1}: ${e.message}`)
+        results.errors.push(`Order ${i+1} (${mappedData[i]?.customer_name}): ${e.message}`)
       }
     }
   } else if (type === 'pelanggan') {
