@@ -57,7 +57,7 @@ export default function RekapOrder() {
 
     if (filterStatus !== 'Semua') q = q.eq('status', filterStatus)
 
-    const { data } = await q.limit(200)
+    const { data } = await q
     setOrders(data || [])
     setLoading(false)
   }, [filterMode, dateFrom, dateTo, filterStatus])
