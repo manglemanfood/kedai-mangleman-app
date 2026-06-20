@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { usePINConfirm } from '../components/PINModal'
+import { usePIN } from '../components/PINModal'
 
 const formatRp = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 const UNITS = ['kg', 'gram', 'liter', 'ml', 'pcs', 'sachet', 'bungkus', 'buah', 'siung', 'lembar']
@@ -14,7 +14,7 @@ export default function Stok() {
   const [form, setForm] = useState({ name: '', unit: 'kg', stock_qty: '', min_stock: '', last_price: '' })
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
-  const { requestPIN, PINGate } = usePINConfirm('stok')
+  const confirmDelete = usePIN('stok')
 
   const fetchAll = async () => {
     setLoading(true)
@@ -42,14 +42,14 @@ export default function Stok() {
   }
 
   const deleteMaterial = async (m) => {
-    const ok = await requestPIN(`bahan "${m.name}"`)
+    const ok = await confirmDelete(`bahan "${m.name}"`)
     if (!ok) return
     await supabase.from('raw_materials').delete().eq('id', m.id)
     fetchAll()
   }
 
   const deleteProduct = async (p) => {
-    const ok = await requestPIN(`menu "${p.name}"`)
+    const ok = await confirmDelete(`menu "${p.name}"`)
     if (!ok) return
     await supabase.from('products').delete().eq('id', p.id)
     fetchAll()
@@ -76,7 +76,7 @@ export default function Stok() {
 
   return (
     <div>
-      <PINGate />
+      
       <div className="page-header flex-between">
         <div><h1>Stok & Inventory 📦</h1><p>Monitor bahan baku dan ketersediaan menu</p></div>
         {tab === 'bahan' && <button className="btn btn-primary" onClick={openAdd}>+ Tambah Bahan</button>}
