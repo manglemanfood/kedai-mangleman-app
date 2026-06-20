@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { usePINConfirm } from '../components/PINModal'
+import { usePIN } from '../components/PINModal'
 
 const formatRp = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 const STATUS_FLOW = ['Baru', 'Diproses', 'Dikemas', 'Dikirim', 'Selesai']
@@ -16,7 +16,7 @@ export default function RekapOrder() {
   const [editOrder, setEditOrder] = useState(null)
   const [editForm, setEditForm] = useState({})
   const [saving, setSaving] = useState(false)
-  const { requestPIN, PINGate } = usePINConfirm('rekap-order')
+  const confirmDelete = usePIN('rekap-order')
 
   const fetch = useCallback(async () => {
     setLoading(true)
@@ -53,7 +53,7 @@ export default function RekapOrder() {
   }
 
   const deleteOrder = async (o) => {
-    const ok = await requestPIN(`order ${o.order_number || o.id.slice(0,6)} - ${o.customer_name}`)
+    const ok = await confirmDelete(`order ${o.order_number || o.id.slice(0,6)} - ${o.customer_name}`)
     if (!ok) return
     await supabase.from('order_items').delete().eq('order_id', o.id)
     await supabase.from('orders').delete().eq('id', o.id)
@@ -70,7 +70,7 @@ export default function RekapOrder() {
 
   return (
     <div>
-      <PINGate />
+      
       <div className="page-header"><h1>Rekap Order Harian 📋</h1><p>Monitor dan update status semua pesanan</p></div>
 
       <div className="grid-4 mb-2">
