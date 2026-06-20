@@ -6,10 +6,72 @@ import { supabase } from '../lib/supabase'
 // ============================================================
 const formatRp = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 
+// ── Parser format Lele Leman (kolom custom, tanggal "04 Feb") ──
+const BULAN_MAP = {jan:1,feb:2,mar:3,apr:4,mei:5,jun:6,jul:7,agu:8,sep:9,okt:10,nov:11,des:12}
+
+function parseLeleDate(tglStr) {
+  const parts = (tglStr || '').trim().split(/\s+/)
+  if (parts.length === 2) {
+    const day = parseInt(parts[0])
+    const month = BULAN_MAP[parts[1].toLowerCase()]
+    if (day > 0 && month > 0) return `2026-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+  }
+  return null
+}
+
+function isLeleFormat(text) {
+  // Detect Lele Leman format: has "LELE" header and "04 Feb" style dates
+  return text.includes('LELE') && /\d{1,2}\s+(Feb|Mar|Apr|Mei|Jun|Jul|Agu|Sep|Okt|Nov|Des|Jan)/i.test(text)
+}
+
+function parseLeleCSV(text) {
+  const lines = text.split(/\r?\n/)
+  const transactions = []
+  for (const line of lines) {
+    const cols = line.split(',')
+    if (cols.length < 21) continue
+    const tgl = (cols[0] || '').trim()
+    const nama = (cols[2] || '').trim()
+    const gedungRaw = (cols[3] || '').trim()
+    const phone = (cols[4] || '').trim()
+    const item = (cols[5] || '').trim()
+    const hjStr = (cols[6] || '').trim()
+    const totalStr = (cols[20] || '').trim()
+    const payment = (cols[21] || 'BCA').trim()
+    if (!tgl || !nama || !item) continue
+    if (['nama','omset','satuan','hari','tanggal','rumus','bikin','klik'].includes(nama.toLowerCase())) continue
+    const dateIso = parseLeleDate(tgl)
+    if (!dateIso) continue
+    const hj = parseInt(hjStr.replace(/[^0-9]/g,'')) || 0
+    let total = parseInt(totalStr.replace(/[^0-9]/g,'')) || 0
+    if (hj <= 0) continue
+    if (total <= 0) total = hj
+    let gedung = gedungRaw, lantai = ''
+    const ltMatch = gedungRaw.match(/(.+?)\s*[Ll]t\.?\s*(\S+)/)
+    if (ltMatch) { gedung = ltMatch[1].trim(); lantai = ltMatch[2] }
+    const qty = Math.max(1, Math.round(total / hj))
+    transactions.push({ dateIso, nama, gedung, lantai, phone, item, qty, hj, total, payment })
+  }
+  // Group by customer+date
+  const orderMap = {}
+  for (const t of transactions) {
+    const key = `${t.dateIso}_${t.nama}`
+    if (!orderMap[key]) orderMap[key] = {
+      customer_name: t.nama, gedung: t.gedung, lantai: t.lantai, phone: t.phone,
+      created_at: t.dateIso + 'T08:00:00+07:00',
+      total_amount: 0,
+      status: new Date(t.dateIso) < new Date() ? 'Selesai' : 'Baru',
+      payment_status: 'Lunas', payment_method: t.payment, items: []
+    }
+    orderMap[key].items.push({ product_name: t.item, quantity: t.qty, price: t.hj, subtotal: t.total })
+    orderMap[key].total_amount += t.total
+  }
+  return Object.values(orderMap)
+}
+
 function parseCSV(text) {
   const lines = text.trim().split(/\r?\n/)
   if (lines.length < 2) return { headers: [], rows: [] }
-  // Detect separator: comma or semicolon
   const sep = lines[0].includes(';') ? ';' : ','
   const headers = lines[0].split(sep).map(h => h.trim().replace(/^"|"$/g, '').toLowerCase())
   const rows = lines.slice(1).map(line => {
@@ -49,12 +111,13 @@ const IMPORT_TYPES = {
     bg: '#E8F5E0',
     templateHeaders: 'tanggal,nama_customer,gedung,lantai,nama_produk,qty,harga,total,status',
     templateExample: '20/01/2026,Budi Santoso,Gedung A,5,Ricebowl Lele Goreng,2,18000,36000,Selesai',
-    mapFn: (rows) => {
-      // Group by transaction (same customer+date = 1 order)
+    mapFn: (rows, rawText) => {
+      // Auto-detect Lele Leman format
+      if (rawText && isLeleFormat(rawText)) return parseLeleCSV(rawText)
+      // Standard format
       const orders = {}
       rows.forEach((r, i) => {
         const key = `${r.tanggal || r.date || r['tanggal transaksi'] || ''}_${r.nama_customer || r.customer || r.nama || r['nama pelanggan'] || 'Unknown'}_${i}`
-        // Try various column name variants
         const tanggal = r.tanggal || r.date || r['tanggal transaksi'] || r['tgl'] || ''
         const nama = r.nama_customer || r.customer || r.nama || r['nama pelanggan'] || r['name'] || 'Pelanggan'
         const gedung = r.gedung || r.building || r['nama gedung'] || ''
@@ -64,15 +127,7 @@ const IMPORT_TYPES = {
         const harga = cleanNumber(r.harga || r.price || r['harga satuan'] || 0)
         const total = cleanNumber(r.total || r['total harga'] || r['subtotal'] || (harga * qty))
         const status = r.status || 'Selesai'
-
-        if (!orders[key]) {
-          orders[key] = {
-            customer_name: nama, gedung, lantai,
-            total_amount: 0, status,
-            created_at: cleanDate(tanggal),
-            items: []
-          }
-        }
+        if (!orders[key]) orders[key] = { customer_name: nama, gedung, lantai, total_amount: 0, status, created_at: cleanDate(tanggal), items: [] }
         if (produk) {
           orders[key].items.push({ product_name: produk, quantity: qty, price: harga, subtotal: total || harga * qty })
           orders[key].total_amount += total || harga * qty
@@ -297,7 +352,7 @@ export default function ImportCSV() {
         const { headers, rows } = parseCSV(ev.target.result)
         if (rows.length === 0) { setError('File kosong atau format tidak dikenali.'); return }
         const cfg = IMPORT_TYPES[selectedType]
-        const mappedRows = cfg.mapFn(rows)
+        const mappedRows = cfg.mapFn(rows, ev.target.result)
         setParsed({ headers, rows, total: rows.length })
         setMapped(mappedRows)
         setStep(3)
