@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
 const formatRp = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
@@ -8,13 +8,13 @@ const STATUS_COLOR = {
   Dikirim: '#2D5016', Selesai: '#28A745', Batal: '#C0392B'
 }
 
-const today = () => new Date().toISOString().split('T')[0]
+const todayStr = () => new Date().toISOString().split('T')[0]
 
 export default function RekapOrder() {
   const [orders, setOrders] = useState([])
   const [selected, setSelected] = useState(null)
   const [filterStatus, setFilterStatus] = useState('Semua')
-  const [filterMode, setFilterMode] = useState('semua') // 'hari-ini','semua','custom'
+  const [filterMode, setFilterMode] = useState('semua')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [loading, setLoading] = useState(true)
@@ -22,78 +22,104 @@ export default function RekapOrder() {
   const [editOrder, setEditOrder] = useState(null)
   const [editForm, setEditForm] = useState({})
   const [saving, setSaving] = useState(false)
-  const [autoFixDone, setAutoFixDone] = useState(false)
+  const autoFixRef = useRef(false)
 
-  // Auto-set "Selesai" untuk transaksi masa lalu
-  const autoFixPastOrders = useCallback(async () => {
-    if (autoFixDone) return
-    const todayStr = today()
-    const { data: pastOrders } = await supabase
-      .from('orders')
-      .select('id')
-      .lt('created_at', todayStr + 'T00:00:00')
-      .in('status', ['Baru', 'Diproses', 'Dikemas', 'Dikirim'])
-    
-    if (pastOrders && pastOrders.length > 0) {
-      const ids = pastOrders.map(o => o.id)
-      await supabase.from('orders').update({ status: 'Selesai', updated_at: new Date().toISOString() }).in('id', ids)
-      console.log(`Auto-fixed ${ids.length} past orders to Selesai`)
-    }
-    setAutoFixDone(true)
-  }, [autoFixDone])
-
-  const fetch = useCallback(async () => {
+  const fetchOrders = async (mode, from, to, status) => {
     setLoading(true)
-    let q = supabase.from('orders').select('*, order_items(*)').order('created_at', { ascending: false })
+    try {
+      let q = supabase
+        .from('orders')
+        .select('*, order_items(*)')
+        .order('created_at', { ascending: false })
 
-    // Apply date filter
-    if (filterMode === 'hari-ini') {
-      q = q.gte('created_at', today() + 'T00:00:00').lte('created_at', today() + 'T23:59:59')
-    } else if (filterMode === 'custom' && dateFrom) {
-      q = q.gte('created_at', dateFrom + 'T00:00:00')
-      if (dateTo) q = q.lte('created_at', dateTo + 'T23:59:59')
+      const td = todayStr()
+
+      if (mode === 'hari-ini') {
+        // Pakai date() function Supabase agar timezone-safe
+        q = q.gte('created_at', td + 'T00:00:00+07:00')
+             .lte('created_at', td + 'T23:59:59+07:00')
+      } else if (mode === 'custom') {
+        if (from) q = q.gte('created_at', from + 'T00:00:00+07:00')
+        if (to)   q = q.lte('created_at', to   + 'T23:59:59+07:00')
+      }
+      // mode === 'semua' → no date filter
+
+      if (status !== 'Semua') q = q.eq('status', status)
+
+      const { data, error } = await q
+      if (error) throw error
+      setOrders(data || [])
+    } catch (e) {
+      console.error('Fetch error:', e)
+      setOrders([])
     }
-    // filterMode === 'semua' → no date filter, tampilkan semua
-
-    if (filterStatus !== 'Semua') q = q.eq('status', filterStatus)
-
-    const { data } = await q
-    setOrders(data || [])
     setLoading(false)
+  }
+
+  // Auto-fix past orders sekali saja
+  useEffect(() => {
+    const autoFix = async () => {
+      if (autoFixRef.current) return
+      autoFixRef.current = true
+      const td = todayStr()
+      const { data: past } = await supabase
+        .from('orders')
+        .select('id')
+        .lt('created_at', td + 'T00:00:00+07:00')
+        .in('status', ['Baru', 'Diproses', 'Dikemas', 'Dikirim'])
+      if (past && past.length > 0) {
+        await supabase.from('orders')
+          .update({ status: 'Selesai', updated_at: new Date().toISOString() })
+          .in('id', past.map(o => o.id))
+      }
+      // Fetch after fix
+      fetchOrders(filterMode, dateFrom, dateTo, filterStatus)
+    }
+    autoFix()
+  }, []) // hanya sekali saat mount
+
+  // Re-fetch saat filter berubah
+  useEffect(() => {
+    fetchOrders(filterMode, dateFrom, dateTo, filterStatus)
   }, [filterMode, dateFrom, dateTo, filterStatus])
 
+  // Realtime
   useEffect(() => {
-    autoFixPastOrders().then(() => fetch())
-  }, [])
-
-  useEffect(() => { fetch() }, [fetch])
-
-  useEffect(() => {
-    const channel = supabase.channel('orders-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetch)
+    const ch = supabase.channel('orders-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+        fetchOrders(filterMode, dateFrom, dateTo, filterStatus)
+      })
       .subscribe()
-    return () => supabase.removeChannel(channel)
-  }, [fetch])
+    return () => supabase.removeChannel(ch)
+  }, [filterMode, dateFrom, dateTo, filterStatus])
 
   const updateStatus = async (id, status) => {
     setUpdating(id)
     await supabase.from('orders').update({ status, updated_at: new Date().toISOString() }).eq('id', id)
-    fetch()
-    if (selected?.id === id) setSelected(s => ({ ...s, status }))
     setUpdating(null)
+    fetchOrders(filterMode, dateFrom, dateTo, filterStatus)
+    if (selected?.id === id) setSelected(s => ({ ...s, status }))
   }
 
   const openEdit = (o) => {
     setEditOrder(o)
-    setEditForm({ customer_name: o.customer_name, gedung: o.gedung, lantai: o.lantai, phone: o.phone || '', catatan: o.catatan || '', total_amount: o.total_amount, status: o.status })
+    setEditForm({
+      customer_name: o.customer_name,
+      gedung: o.gedung,
+      lantai: o.lantai,
+      phone: o.phone || '',
+      catatan: o.catatan || '',
+      total_amount: o.total_amount,
+      status: o.status
+    })
   }
 
   const saveEdit = async () => {
     setSaving(true)
     await supabase.from('orders').update({ ...editForm, updated_at: new Date().toISOString() }).eq('id', editOrder.id)
     setEditOrder(null)
-    fetch()
     setSaving(false)
+    fetchOrders(filterMode, dateFrom, dateTo, filterStatus)
   }
 
   const deleteOrder = async (o) => {
@@ -101,18 +127,23 @@ export default function RekapOrder() {
     await supabase.from('order_items').delete().eq('order_id', o.id)
     await supabase.from('orders').delete().eq('id', o.id)
     if (selected?.id === o.id) setSelected(null)
-    fetch()
+    fetchOrders(filterMode, dateFrom, dateTo, filterStatus)
+  }
+
+  const setMode = (m) => {
+    setFilterMode(m)
+    if (m !== 'custom') { setDateFrom(''); setDateTo('') }
   }
 
   const stats = {
     total: orders.length,
     revenue: orders.filter(o => o.status !== 'Batal').reduce((s, o) => s + o.total_amount, 0),
-    pending: orders.filter(o => ['Baru', 'Diproses', 'Dikemas'].includes(o.status)).length,
+    pending: orders.filter(o => ['Baru','Diproses','Dikemas'].includes(o.status)).length,
     selesai: orders.filter(o => o.status === 'Selesai').length,
   }
 
-  const isToday = (dateStr) => dateStr && dateStr.startsWith(today())
-  const isPast = (dateStr) => dateStr && dateStr < today() + 'T00:00:00'
+  const isToday = (dt) => dt && dt.startsWith(todayStr())
+  const isPast  = (dt) => dt && dt < todayStr() + 'T00:00:00'
 
   return (
     <div>
@@ -136,38 +167,42 @@ export default function RekapOrder() {
         ))}
       </div>
 
-      {/* Filter bar */}
+      {/* Filter */}
       <div className="card mb-2" style={{ padding: '1rem' }}>
-        {/* Date mode */}
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+        {/* Mode buttons */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
           {[
             { key: 'hari-ini', label: '📅 Hari Ini' },
-            { key: 'semua', label: '📂 Semua Tanggal' },
-            { key: 'custom', label: '🗓 Pilih Tanggal' },
+            { key: 'semua',    label: '📂 Semua Tanggal' },
+            { key: 'custom',   label: '🗓 Pilih Tanggal' },
           ].map(m => (
-            <button key={m.key} onClick={() => setFilterMode(m.key)} className="btn btn-sm"
+            <button key={m.key} onClick={() => setMode(m.key)} className="btn btn-sm"
               style={{ background: filterMode === m.key ? '#1A2E0A' : 'transparent', color: filterMode === m.key ? '#fff' : 'var(--text)', border: '1px solid var(--border)' }}>
               {m.label}
             </button>
           ))}
 
-          {/* Custom date range */}
           {filterMode === 'custom' && (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="form-control" style={{ width: 'auto' }} />
+            <>
+              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                className="form-control" style={{ width: 'auto' }} />
               <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>s/d</span>
-              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="form-control" style={{ width: 'auto' }} />
-            </div>
+              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                className="form-control" style={{ width: 'auto' }} />
+            </>
           )}
 
-          <button onClick={fetch} className="btn btn-outline btn-sm" style={{ marginLeft: 'auto' }}>🔄 Refresh</button>
+          <button onClick={() => fetchOrders(filterMode, dateFrom, dateTo, filterStatus)}
+            className="btn btn-outline btn-sm" style={{ marginLeft: 'auto' }}>
+            🔄 Refresh
+          </button>
         </div>
 
         {/* Status filter */}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {['Semua', 'Baru', 'Diproses', 'Dikemas', 'Dikirim', 'Selesai', 'Batal'].map(s => (
+          {['Semua','Baru','Diproses','Dikemas','Dikirim','Selesai','Batal'].map(s => (
             <button key={s} onClick={() => setFilterStatus(s)} className="btn btn-sm"
-              style={{ background: filterStatus === s ? STATUS_COLOR[s] || '#1A2E0A' : 'transparent', color: filterStatus === s ? '#fff' : 'var(--text)', border: '1px solid var(--border)' }}>
+              style={{ background: filterStatus === s ? (STATUS_COLOR[s] || '#1A2E0A') : 'transparent', color: filterStatus === s ? '#fff' : 'var(--text)', border: '1px solid var(--border)' }}>
               {s}
             </button>
           ))}
@@ -206,13 +241,18 @@ export default function RekapOrder() {
         </div>
       )}
 
-      {/* Table */}
+      {/* Table + Detail */}
       <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 360px' : '1fr', gap: '1rem' }}>
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           {loading ? (
             <div className="loading"><div className="spinner" /><span>Memuat order...</span></div>
           ) : orders.length === 0 ? (
-            <div className="empty-state"><p>Tidak ada order ditemukan</p></div>
+            <div className="empty-state">
+              <p>Tidak ada order ditemukan</p>
+              <p style={{ fontSize: 12, marginTop: 8, color: 'var(--text-muted)' }}>
+                {filterMode === 'hari-ini' ? 'Coba pilih "Semua Tanggal" untuk melihat data historis' : 'Coba ubah filter atau klik Refresh'}
+              </p>
+            </div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table className="table">
@@ -233,20 +273,25 @@ export default function RekapOrder() {
                     const past = isPast(o.created_at)
                     return (
                       <tr key={o.id}
-                        style={{ cursor: 'pointer', background: selected?.id === o.id ? 'var(--primary-light)' : past ? '#FAFAF8' : '' }}
+                        style={{ cursor: 'pointer', background: selected?.id === o.id ? 'var(--primary-light)' : '' }}
                         onClick={() => setSelected(o)}>
                         <td style={{ fontWeight: 700, fontSize: 11, color: 'var(--text-muted)' }}>
                           {o.order_number?.slice(-8) || o.id.slice(0,6)}
                         </td>
-                        <td style={{ fontSize: 11, color: past ? 'var(--text-muted)' : 'var(--text)', whiteSpace: 'nowrap' }}>
+                        <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
                           {new Date(o.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: '2-digit' })}
-                          {isToday(o.created_at) && <span style={{ marginLeft: 4, fontSize: 9, background: '#E8F5E0', color: '#2D5016', borderRadius: 4, padding: '1px 4px', fontWeight: 700 }}>HARI INI</span>}
+                          {isToday(o.created_at) && (
+                            <span style={{ display: 'block', fontSize: 9, background: '#E8F5E0', color: '#2D5016', borderRadius: 4, padding: '1px 4px', fontWeight: 700, marginTop: 2 }}>HARI INI</span>
+                          )}
                         </td>
                         <td>
                           <div style={{ fontWeight: 600, fontSize: 13 }}>{o.customer_name}</div>
                           {o.phone && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{o.phone}</div>}
                         </td>
-                        <td style={{ fontSize: 12 }}>{o.gedung}<br /><span style={{ color: 'var(--text-muted)' }}>Lt. {o.lantai}</span></td>
+                        <td style={{ fontSize: 12 }}>
+                          {o.gedung}<br />
+                          <span style={{ color: 'var(--text-muted)' }}>Lt. {o.lantai}</span>
+                        </td>
                         <td style={{ fontWeight: 600, fontSize: 13 }}>{formatRp(o.total_amount)}</td>
                         <td>
                           <span className="badge" style={{ background: STATUS_COLOR[o.status] + '22', color: STATUS_COLOR[o.status], fontSize: 11 }}>
@@ -256,7 +301,10 @@ export default function RekapOrder() {
                         <td onClick={e => e.stopPropagation()}>
                           <div style={{ display: 'flex', gap: 4 }}>
                             {nextStatus && o.status !== 'Batal' && !past && (
-                              <button className="btn btn-sm btn-primary" onClick={() => updateStatus(o.id, nextStatus)} disabled={updating === o.id} style={{ fontSize: 11, padding: '4px 8px', whiteSpace: 'nowrap' }}>
+                              <button className="btn btn-sm btn-primary"
+                                onClick={() => updateStatus(o.id, nextStatus)}
+                                disabled={updating === o.id}
+                                style={{ fontSize: 11, padding: '4px 8px', whiteSpace: 'nowrap' }}>
                                 {updating === o.id ? '...' : '→ ' + nextStatus}
                               </button>
                             )}
