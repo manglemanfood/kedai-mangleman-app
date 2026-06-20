@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { usePIN } from '../components/PINModal'
+
 
 const formatRp = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 const CATEGORIES = ['Bahan Baku', 'Kemasan', 'Ongkir Supplier', 'Operasional', 'Gaji', 'Lainnya']
@@ -17,7 +17,6 @@ export default function Pengeluaran() {
   const [filterDate, setFilterDate] = useState('')
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
-  const confirmDelete = usePIN('pengeluaran')
 
   const fetchExpenses = async () => {
     setLoading(true)
@@ -45,8 +44,7 @@ export default function Pengeluaran() {
   }
 
   const remove = async (e) => {
-    const ok = await confirmDelete(`pengeluaran "${e.description}"`)
-    if (!ok) return
+    if (!window.confirm(`Hapus pengeluaran "${e.description}"?`)) return
     await supabase.from('expenses').delete().eq('id', e.id)
     fetchExpenses()
   }
