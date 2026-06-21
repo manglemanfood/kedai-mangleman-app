@@ -240,7 +240,11 @@ export default function Stok() {
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <button onClick={() => updateStock(m.id, -0.1)} style={{ width: 30, height: 30, borderRadius: '50%', border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', fontWeight: 700 }}>−</button>
                               <div style={{ textAlign: 'center', minWidth: 80 }}>
-                                <div style={{ fontWeight: 700, fontSize: 18 }}>{parseFloat(m.stock_qty).toFixed(2)}</div>
+                                <div style={{ fontWeight: 700, fontSize: 18 }}>
+                  {m.unit === 'kg' || m.unit === 'liter' 
+                    ? parseFloat(m.stock_qty).toFixed(2).replace(/\.?0+$/, '') || '0'
+                    : Math.floor(m.stock_qty)}
+                </div>
                                 <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{m.unit}</div>
                               </div>
                               <button onClick={() => updateStock(m.id, 0.1)} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'var(--primary)', color: '#fff', cursor: 'pointer', fontWeight: 700 }}>+</button>
