@@ -117,7 +117,11 @@ export default function Bundling() {
   const [tab, setTab] = useState('rekomendasi')
   const [loading, setLoading] = useState(true)
   const [showCustomForm, setShowCustomForm] = useState(false)
-  const [confirmBundle, setConfirmBundle] = useState(null) // bundle yang mau disimpan
+  const [confirmBundle, setConfirmBundle] = useState(null)
+  const [editSaved, setEditSaved] = useState(null)
+  const [editSavedForm, setEditSavedForm] = useState({})
+  const [editSaved, setEditSaved] = useState(null)
+  const [editSavedForm, setEditSavedForm] = useState({}) // bundle yang mau disimpan
   const [confirmForm, setConfirmForm] = useState({ periode: 'harian', diskon: 0, bundlePrice: 0, notes: '' })
   const [editBundle, setEditBundle] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -146,6 +150,75 @@ export default function Bundling() {
     }
     load()
   }, [])
+
+  const openEditSaved = (b) => {
+    const items = typeof b.items === 'string' ? JSON.parse(b.items) : b.items || []
+    setEditSaved(b)
+    setEditSavedForm({
+      name: b.name,
+      strategy: b.strategy || '',
+      periode: b.periode,
+      diskon: b.diskon,
+      bundle_price: b.bundle_price,
+      normal_price: b.normal_price,
+      notes: b.notes || '',
+    })
+  }
+
+  const saveEditSaved = async () => {
+    if (!editSaved) return
+    setSaving(true)
+    await supabase.from('bundling_packages').update({
+      name: editSavedForm.name,
+      strategy: editSavedForm.strategy,
+      periode: editSavedForm.periode,
+      diskon: parseInt(editSavedForm.diskon) || 0,
+      bundle_price: parseInt(editSavedForm.bundle_price) || 0,
+      notes: editSavedForm.notes,
+    }).eq('id', editSaved.id)
+    const { data: fresh } = await supabase.from('bundling_packages').select('*').order('created_at', { ascending: false })
+    setSavedBundles(fresh || [])
+    setSaving(false)
+    setEditSaved(null)
+  }
+
+  const openEditSaved = (b) => {
+    setEditSaved(b)
+    const items = typeof b.items === 'string' ? JSON.parse(b.items) : b.items || []
+    setEditSavedForm({
+      name: b.name,
+      strategy: b.strategy || '',
+      periode: b.periode,
+      diskon: b.diskon,
+      bundle_price: b.bundle_price,
+      normal_price: b.normal_price,
+      notes: b.notes || '',
+      start_date: b.start_date || '',
+      end_date: b.end_date || '',
+      is_active: b.is_active,
+      items,
+    })
+  }
+
+  const saveEditSaved = async () => {
+    if (!editSaved) return
+    setSaving(true)
+    await supabase.from('bundling_packages').update({
+      name: editSavedForm.name,
+      strategy: editSavedForm.strategy,
+      periode: editSavedForm.periode,
+      diskon: parseInt(editSavedForm.diskon) || 0,
+      bundle_price: parseInt(editSavedForm.bundle_price) || 0,
+      notes: editSavedForm.notes,
+      start_date: editSavedForm.start_date || null,
+      end_date: editSavedForm.end_date || null,
+      is_active: editSavedForm.is_active,
+    }).eq('id', editSaved.id)
+    const { data: fresh } = await supabase.from('bundling_packages').select('*').order('created_at', { ascending: false })
+    setSavedBundles(fresh || [])
+    setSaving(false)
+    setEditSaved(null)
+  }
 
   const openConfirm = (bundle) => {
     setConfirmBundle(bundle)
@@ -177,6 +250,8 @@ export default function Bundling() {
       diskon: finalDiskon,
       bundle_price: finalBundlePrice,
       notes: finalNotes,
+      start_date: null,
+      end_date: null,
       is_active: true,
     }
     if (editBundle) {
@@ -420,8 +495,9 @@ export default function Bundling() {
 
                         <div style={{ display: 'flex', gap: 6 }}>
                           <button onClick={() => toggleActive(b.id, !b.is_active)} className="btn btn-sm btn-outline" style={{ flex: 1, fontSize: 11 }}>
-                            {b.is_active ? '⏸ Nonaktifkan' : '▶️ Aktifkan'}
+                            {b.is_active ? '⏸ Nonaktif' : '▶️ Aktifkan'}
                           </button>
+                          <button onClick={() => openEditSaved(b)} className="btn btn-sm btn-outline" style={{ fontSize: 11 }}>✏️</button>
                           <button onClick={() => deleteBundle(b.id)} className="btn btn-sm btn-danger" style={{ fontSize: 11 }}>🗑</button>
                         </div>
                       </div>
@@ -540,6 +616,196 @@ export default function Bundling() {
             </div>
           )}
         </>
+      )}
+
+      {/* Edit Saved Bundle Modal */}
+      {editSaved && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div className="card" style={{ width: '100%', maxWidth: 460, maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="flex-between mb-2">
+              <h3 style={{ fontWeight: 700 }}>✏️ Edit Paket Bundling</h3>
+              <button onClick={() => setEditSaved(null)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer' }}>✕</button>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Nama Paket</label>
+              <input className="form-control" value={editSavedForm.name || ''} onChange={e => setEditSavedForm(f => ({ ...f, name: e.target.value }))} />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Strategi / Deskripsi</label>
+              <input className="form-control" value={editSavedForm.strategy || ''} onChange={e => setEditSavedForm(f => ({ ...f, strategy: e.target.value }))} />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Periode Plan</label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
+                {[
+                  { key: 'harian', icon: '📅', label: 'Harian' },
+                  { key: 'pekanan', icon: '📆', label: 'Pekanan' },
+                  { key: 'bulanan', icon: '🗓', label: 'Bulanan' },
+                ].map(p => (
+                  <button key={p.key} onClick={() => setEditSavedForm(f => ({ ...f, periode: p.key }))}
+                    style={{ padding: '10px', borderRadius: 10, border: `2px solid ${editSavedForm.periode === p.key ? '#1A2E0A' : 'var(--border)'}`, background: editSavedForm.periode === p.key ? '#1A2E0A' : '#fff', color: editSavedForm.periode === p.key ? '#fff' : 'var(--text)', cursor: 'pointer', textAlign: 'center' }}>
+                    <div style={{ fontSize: 18 }}>{p.icon}</div>
+                    <div style={{ fontWeight: 700, fontSize: 12 }}>{p.label}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px', marginBottom: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6 }}>
+                <span>Harga Normal</span>
+                <span style={{ fontWeight: 600, textDecoration: 'line-through', color: 'var(--text-muted)' }}>{formatRp(editSavedForm.normal_price)}</span>
+              </div>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label">Diskon (Rp)</label>
+                <input className="form-control" type="number"
+                  value={editSavedForm.diskon}
+                  onChange={e => {
+                    const d = parseInt(e.target.value) || 0
+                    setEditSavedForm(f => ({ ...f, diskon: d, bundle_price: f.normal_price - d }))
+                  }} />
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>
+                  = {editSavedForm.normal_price > 0 ? Math.round((editSavedForm.diskon / editSavedForm.normal_price) * 100) : 0}% diskon
+                </p>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 18, color: '#16A34A', marginTop: 8, padding: '8px', background: '#F0FDF4', borderRadius: 8 }}>
+                <span>Harga Bundle</span>
+                <span>{formatRp(editSavedForm.bundle_price)}</span>
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Catatan</label>
+              <textarea className="form-control" rows={2} value={editSavedForm.notes || ''} onChange={e => setEditSavedForm(f => ({ ...f, notes: e.target.value }))} />
+            </div>
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-outline" style={{ flex: 1 }} onClick={() => setEditSaved(null)}>Batal</button>
+              <button className="btn btn-primary" style={{ flex: 2 }} onClick={saveEditSaved} disabled={saving}>
+                {saving ? '⏳ Menyimpan...' : '💾 Simpan Perubahan'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Saved Bundle Modal */}
+      {editSaved && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div className="card" style={{ width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="flex-between mb-2">
+              <h3 style={{ fontWeight: 700 }}>✏️ Edit Paket Bundling</h3>
+              <button onClick={() => setEditSaved(null)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer' }}>✕</button>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Nama Paket</label>
+              <input className="form-control" value={editSavedForm.name || ''} onChange={e => setEditSavedForm(f => ({ ...f, name: e.target.value }))} />
+            </div>
+
+            {/* Item list (read only) */}
+            {editSavedForm.items?.length > 0 && (
+              <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px', marginBottom: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6 }}>ISI PAKET</div>
+                {editSavedForm.items.map((item, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 2 }}>
+                    <span>{item.qty > 1 ? `${item.qty}x ` : ''}{item.name}</span>
+                    <span style={{ color: 'var(--text-muted)' }}>{formatRp(item.price * item.qty)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Edit harga */}
+            <div className="grid-2">
+              <div className="form-group">
+                <label className="form-label">Diskon (Rp)</label>
+                <input className="form-control" type="number" value={editSavedForm.diskon || 0}
+                  onChange={e => {
+                    const d = parseInt(e.target.value) || 0
+                    setEditSavedForm(f => ({ ...f, diskon: d, bundle_price: (f.normal_price || 0) - d }))
+                  }} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Harga Bundle (Rp)</label>
+                <input className="form-control" type="number" value={editSavedForm.bundle_price || 0}
+                  onChange={e => {
+                    const bp = parseInt(e.target.value) || 0
+                    setEditSavedForm(f => ({ ...f, bundle_price: bp, diskon: (f.normal_price || 0) - bp }))
+                  }} />
+              </div>
+            </div>
+
+            {/* Preview harga */}
+            <div style={{ background: '#F0FDF4', borderRadius: 8, padding: '10px 12px', marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: 11, color: '#888' }}>Normal: <span style={{ textDecoration: 'line-through' }}>{formatRp(editSavedForm.normal_price)}</span></div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: '#16A34A' }}>{formatRp(editSavedForm.bundle_price)}</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 12, color: '#DC2626', fontWeight: 600 }}>Hemat {formatRp(editSavedForm.diskon)}</div>
+                <div style={{ fontSize: 11, color: '#888' }}>
+                  {editSavedForm.normal_price > 0 ? Math.round((editSavedForm.diskon / editSavedForm.normal_price) * 100) : 0}% diskon
+                </div>
+              </div>
+            </div>
+
+            {/* Periode */}
+            <div className="form-group">
+              <label className="form-label">📅 Periode Plan</label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                {[['harian','📅','Harian'],['pekanan','📆','Pekanan'],['bulanan','🗓','Bulanan']].map(([k,icon,label]) => (
+                  <button key={k} onClick={() => setEditSavedForm(f => ({ ...f, periode: k }))}
+                    style={{ padding: '8px', borderRadius: 8, border: `2px solid ${editSavedForm.periode === k ? '#1A2E0A' : 'var(--border)'}`, background: editSavedForm.periode === k ? '#1A2E0A' : '#fff', color: editSavedForm.periode === k ? '#fff' : 'var(--text)', cursor: 'pointer', fontWeight: editSavedForm.periode === k ? 700 : 400, fontSize: 13 }}>
+                    {icon} {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Tanggal berlaku */}
+            <div style={{ background: '#EFF6FF', borderRadius: 10, padding: '12px', marginBottom: 12 }}>
+              <div style={{ fontWeight: 600, fontSize: 13, color: '#1D4ED8', marginBottom: 10 }}>📅 Tanggal Berlaku Paket</div>
+              <div className="grid-2">
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Mulai Tanggal</label>
+                  <input className="form-control" type="date" value={editSavedForm.start_date || ''}
+                    onChange={e => setEditSavedForm(f => ({ ...f, start_date: e.target.value }))} />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Sampai Tanggal</label>
+                  <input className="form-control" type="date" value={editSavedForm.end_date || ''}
+                    onChange={e => setEditSavedForm(f => ({ ...f, end_date: e.target.value }))} />
+                </div>
+              </div>
+              <p style={{ fontSize: 11, color: '#2563EB', marginTop: 6 }}>
+                💡 Kosongkan jika paket berlaku terus-menerus tanpa batas waktu
+              </p>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Strategi / Deskripsi</label>
+              <input className="form-control" value={editSavedForm.strategy || ''}
+                onChange={e => setEditSavedForm(f => ({ ...f, strategy: e.target.value }))} />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Catatan Internal</label>
+              <textarea className="form-control" rows={2} value={editSavedForm.notes || ''}
+                onChange={e => setEditSavedForm(f => ({ ...f, notes: e.target.value }))} />
+            </div>
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-outline" style={{ flex: 1 }} onClick={() => setEditSaved(null)}>Batal</button>
+              <button className="btn btn-primary" style={{ flex: 2 }} onClick={saveEditSaved} disabled={saving}>
+                {saving ? '⏳ Menyimpan...' : '💾 Simpan Perubahan'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Confirm Save Modal */}
