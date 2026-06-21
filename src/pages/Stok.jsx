@@ -233,7 +233,23 @@ export default function Stok() {
                           <div style={{ flex: 1, minWidth: 160 }}>
                             <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{m.name}</div>
                             <span className={`badge ${isLow ? 'badge-danger' : 'badge-success'}`}>{isLow ? '⚠️ Hampir Habis' : '✅ Aman'}</span>
-                            {m.last_price > 0 && <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>{formatRp(m.last_price)}/{m.unit}</span>}
+                            {m.last_price > 0 && (
+                              <div style={{ marginTop: 4 }}>
+                                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                                  Harga beli terakhir: {formatRp(m.last_price)}/{m.unit}
+                                </span>
+                                {m.hpp_fifo > 0 && (
+                                  <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#D97706', marginTop: 2 }}>
+                                    📊 HPP FIFO: {formatRp(m.hpp_fifo)}/{m.unit}
+                                    {m.hpp_fifo !== m.last_price && (
+                                      <span style={{ fontSize: 10, color: m.hpp_fifo < m.last_price ? '#16A34A' : '#DC2626', marginLeft: 6 }}>
+                                        {m.hpp_fifo < m.last_price ? '↓ harga beli naik, stok lama masih murah' : '↑ harga stok lama lebih mahal'}
+                                      </span>
+                                    )}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </div>
                           <div style={{ textAlign: 'center' }}>
                             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>STOK</div>
