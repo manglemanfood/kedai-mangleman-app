@@ -106,10 +106,11 @@ export default function Pengeluaran() {
       await supabase.from('expenses').insert(data)
     }
 
-    // Sync stok otomatis jika ada qty_beli dan diceklis
+    // ═══ SYNC STOK + FIFO ═══
     if (form.qty_beli && parseFloat(form.qty_beli) > 0 && form.sync_stok) {
       const qty = parseFloat(form.qty_beli)
-      const hargaPerSatuan = Math.round(parseInt(form.amount || 0) / qty)
+      const totalCost = parseInt(form.amount || 0)
+      const costPerUnit = totalCost / qty
       const desc = form.description.trim()
       const descLower = desc.toLowerCase()
 
@@ -119,40 +120,104 @@ export default function Pengeluaran() {
         return descLower.includes(mName) || mName.includes(descLower.split(' ')[0])
       })
 
+      let matId = null
+      let matName = desc
+      let matUnit = form.satuan_beli
+      let addQty = qty
+
       if (matchMat) {
-        // ✅ DITEMUKAN → tambah stok yang ada
-        let addQty = qty
+        // ✅ DITEMUKAN → konversi satuan jika perlu
+        matId = matchMat.id
+        matName = matchMat.name
+        matUnit = matchMat.unit
         if (form.satuan_beli === 'gram' && matchMat.unit === 'kg') addQty = qty / 1000
         else if (form.satuan_beli === 'kg' && matchMat.unit === 'gram') addQty = qty * 1000
         else if (form.satuan_beli === 'ml' && matchMat.unit === 'liter') addQty = qty / 1000
         else if (form.satuan_beli === 'liter' && matchMat.unit === 'ml') addQty = qty * 1000
 
+        // Tambah stok total
         const newStock = parseFloat(((matchMat.stock_qty || 0) + addQty).toFixed(3))
+
+        // Kalkulasi FIFO HPP
+        // Ambil semua batch yang masih ada sisanya (remaining_qty > 0)
+        const { data: batches } = await supabase
+          .from('stock_movements')
+          .select('*')
+          .eq('raw_material_id', matchMat.id)
+          .eq('type', 'in')
+          .gt('remaining_qty', 0)
+          .order('created_at', { ascending: true })
+
+        // Hitung HPP FIFO = weighted average dari stok lama + batch baru
+        const existingBatches = batches || []
+        const totalExistingCost = existingBatches.reduce((s, b) => s + (b.remaining_qty * b.cost_per_unit), 0)
+        const totalExistingQty = existingBatches.reduce((s, b) => s + b.remaining_qty, 0)
+        const costPerUnitConverted = costPerUnit * (addQty / qty) // cost per unit dalam satuan bahan
+        const totalNewCost = addQty * costPerUnitConverted
+        const totalAllQty = totalExistingQty + addQty
+        const hppFifo = totalAllQty > 0 ? (totalExistingCost + totalNewCost) / totalAllQty : costPerUnitConverted
+
+        // Update raw_material
         await supabase.from('raw_materials').update({
           stock_qty: newStock,
-          last_price: hargaPerSatuan,
+          last_price: Math.round(costPerUnit),
+          hpp_fifo: parseFloat(hppFifo.toFixed(4)),
+          fifo_updated_at: new Date().toISOString(),
         }).eq('id', matchMat.id)
+
+        // Catat movement FIFO (batch baru masuk)
+        await supabase.from('stock_movements').insert({
+          raw_material_id: matchMat.id,
+          material_name: matchMat.name,
+          type: 'in',
+          qty: addQty,
+          unit: matUnit,
+          cost_per_unit: costPerUnitConverted,
+          total_cost: totalNewCost,
+          remaining_qty: addQty, // belum dipakai
+          notes: `Pembelian: ${desc} ${qty} ${form.satuan_beli} @ Rp ${Math.round(costPerUnit).toLocaleString('id-ID')}`,
+        })
 
         const { data: freshMat } = await supabase.from('raw_materials').select('*').order('name')
         setMaterials(freshMat || [])
-        setSyncMsg(`✅ Stok "${matchMat.name}" +${addQty} ${matchMat.unit} → total ${newStock} ${matchMat.unit}`)
+
+        const hppInfo = existingBatches.length > 0
+          ? ` · HPP FIFO: Rp ${hppFifo.toFixed(0)}/gram (rata-rata ${existingBatches.length + 1} batch)`
+          : ` · HPP FIFO: Rp ${hppFifo.toFixed(0)}/${matUnit}`
+
+        setSyncMsg(`✅ Stok "${matchMat.name}" +${addQty} ${matUnit} → total ${newStock} ${matUnit}${hppInfo}`)
 
       } else {
-        // ⚡ TIDAK DITEMUKAN → buat bahan baru otomatis di Stok
+        // ⚡ TIDAK DITEMUKAN → buat bahan baru otomatis
         const { data: newMat, error: matErr } = await supabase.from('raw_materials').insert({
           name: desc,
           unit: form.satuan_beli,
           stock_qty: qty,
           min_stock: 0,
-          last_price: hargaPerSatuan,
+          last_price: Math.round(costPerUnit),
+          hpp_fifo: parseFloat(costPerUnit.toFixed(4)),
+          fifo_updated_at: new Date().toISOString(),
         }).select().single()
 
         if (!matErr && newMat) {
+          // Catat movement pertama
+          await supabase.from('stock_movements').insert({
+            raw_material_id: newMat.id,
+            material_name: desc,
+            type: 'in',
+            qty: qty,
+            unit: form.satuan_beli,
+            cost_per_unit: costPerUnit,
+            total_cost: totalCost,
+            remaining_qty: qty,
+            notes: `Pembelian pertama: ${qty} ${form.satuan_beli} @ Rp ${Math.round(costPerUnit).toLocaleString('id-ID')}`,
+          })
+
           const { data: freshMat } = await supabase.from('raw_materials').select('*').order('name')
           setMaterials(freshMat || [])
-          setSyncMsg(`✅ Bahan baru "${desc}" otomatis dibuat di Stok: ${qty} ${form.satuan_beli} · Rp ${hargaPerSatuan.toLocaleString('id-ID')}/${form.satuan_beli}`)
+          setSyncMsg(`✅ Bahan baru "${desc}" dibuat di Stok: ${qty} ${form.satuan_beli} · HPP FIFO: Rp ${Math.round(costPerUnit).toLocaleString('id-ID')}/${form.satuan_beli}`)
         } else {
-          setSyncMsg(`❌ Gagal buat bahan baru: ${matErr?.message || 'Unknown error'}`)
+          setSyncMsg(`❌ Gagal: ${matErr?.message || 'Unknown error'}`)
         }
       }
     }
