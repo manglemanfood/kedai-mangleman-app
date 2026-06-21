@@ -61,9 +61,59 @@ export default function OrderForm() {
   const [waUrl, setWaUrl] = useState('')
 
   useEffect(() => {
-    // Load products
-    supabase.from('products').select('*').eq('is_available', true).order('category').then(({ data }) => {
-      if (data) setProducts(data)
+    // Load products + recipes + raw materials untuk cek stok
+    Promise.all([
+      supabase.from('products').select('*').eq('is_available', true).order('category'),
+      supabase.from('recipes').select('*, raw_materials(id, name, stock_qty, unit)'),
+    ]).then(([prodRes, recipeRes]) => {
+      const prods = prodRes.data || []
+      const recipes = recipeRes.data || []
+
+      // Cek stok bahan utama per produk
+      // Bahan "utama" = bukan kemasan/bumbu (berdasarkan nama)
+      const isKemasan = (name) => ['bowl','sendok','kresek','stiker','label','plastik','kertas','box','cup'].some(k => name.toLowerCase().includes(k))
+      const isBumbu = (name) => ['bawang','lada','garam','gula','kecap','saos','saus','minyak','totole','kaldu','merica'].some(k => name.toLowerCase().includes(k))
+
+      const prodsWithStock = prods.map(p => {
+        const prodRecipes = recipes.filter(r => r.product_id === p.id)
+        if (prodRecipes.length === 0) return { ...p, stockReady: true } // no recipe = always available
+
+        // Cek bahan UTAMA saja (bukan kemasan/bumbu)
+        const utamaRecipes = prodRecipes.filter(r => {
+          const mat = r.raw_materials
+          if (!mat) return false
+          return !isKemasan(mat.name) && !isBumbu(mat.name)
+        })
+
+        if (utamaRecipes.length === 0) return { ...p, stockReady: true } // no utama bahan = always available
+
+        // Semua bahan utama harus ada stoknya
+        const stockReady = utamaRecipes.every(r => {
+          const mat = r.raw_materials
+          if (!mat) return true
+          // Konversi qty_used ke satuan bahan
+          let qtyNeeded = r.qty_used
+          if (r.unit === 'gram' && mat.unit === 'kg') qtyNeeded = r.qty_used / 1000
+          else if (r.unit === 'ml' && mat.unit === 'liter') qtyNeeded = r.qty_used / 1000
+          return (mat.stock_qty || 0) >= qtyNeeded
+        })
+
+        // Cari nama bahan utama yang habis untuk info
+        const habis = utamaRecipes
+          .filter(r => {
+            const mat = r.raw_materials
+            if (!mat) return false
+            let qtyNeeded = r.qty_used
+            if (r.unit === 'gram' && mat.unit === 'kg') qtyNeeded = r.qty_used / 1000
+            return (mat.stock_qty || 0) < qtyNeeded
+          })
+          .map(r => r.raw_materials?.name)
+          .filter(Boolean)
+
+        return { ...p, stockReady, bahanHabis: habis }
+      })
+
+      setProducts(prodsWithStock)
     })
     // Load promo bundling aktif hari ini
     supabase.from('bundling_packages').select('*').eq('is_active', true).in('periode', ['harian']).then(({ data }) => {
@@ -79,8 +129,11 @@ export default function OrderForm() {
     })
   }, [])
 
+  // Hanya tampilkan produk yang stoknya ready
+  const availableProducts = products.filter(p => p.stockReady !== false)
+
   // Group by category
-  const grouped = products.reduce((acc, p) => {
+  const grouped = availableProducts.reduce((acc, p) => {
     if (!acc[p.category]) acc[p.category] = []
     acc[p.category].push(p)
     return acc
@@ -94,7 +147,7 @@ export default function OrderForm() {
     return next
   })
 
-  const cartItems = products.filter(p => cart[p.id])
+  const cartItems = availableProducts.filter(p => cart[p.id])
   const regularTotal = cartItems.reduce((sum, p) => sum + p.price * (cart[p.id] || 0), 0)
   const promoTotal = promoCart.reduce((sum, pc) => sum + pc.promo.bundle_price * pc.qty, 0)
   const total = regularTotal + promoTotal
@@ -297,6 +350,16 @@ export default function OrderForm() {
         {/* STEP 2: Menu */}
         {step === 2 && (
           <div>
+            {/* Info stok habis */}
+            {products.filter(p => p.stockReady === false).length > 0 && (
+              <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: 10, padding: '8px 12px', marginBottom: 10, display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span style={{ fontSize: 16 }}>⚠️</span>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)' }}>
+                  <strong style={{ color: '#fff' }}>{products.filter(p => p.stockReady === false).length} menu</strong> tidak tersedia hari ini karena stok bahan habis.
+                </div>
+              </div>
+            )}
+
             {/* PROMO BANNER - paling atas */}
             {promos.length > 0 && (
               <div style={{ marginBottom: 14 }}>
