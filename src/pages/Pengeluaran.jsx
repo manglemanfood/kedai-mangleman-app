@@ -106,35 +106,54 @@ export default function Pengeluaran() {
       await supabase.from('expenses').insert(data)
     }
 
-    // Sync stok otomatis jika ada qty_beli
+    // Sync stok otomatis jika ada qty_beli dan diceklis
     if (form.qty_beli && parseFloat(form.qty_beli) > 0 && form.sync_stok) {
       const qty = parseFloat(form.qty_beli)
-      const desc = form.description.toLowerCase()
+      const hargaPerSatuan = Math.round(parseInt(form.amount || 0) / qty)
+      const desc = form.description.trim()
+      const descLower = desc.toLowerCase()
 
       // Cari bahan baku yang cocok berdasarkan nama
       const matchMat = materials.find(m => {
         const mName = m.name.toLowerCase()
-        return desc.includes(mName) || mName.includes(desc.split(' ')[0])
+        return descLower.includes(mName) || mName.includes(descLower.split(' ')[0])
       })
 
       if (matchMat) {
-        // Konversi satuan jika perlu
+        // ✅ DITEMUKAN → tambah stok yang ada
         let addQty = qty
         if (form.satuan_beli === 'gram' && matchMat.unit === 'kg') addQty = qty / 1000
         else if (form.satuan_beli === 'kg' && matchMat.unit === 'gram') addQty = qty * 1000
         else if (form.satuan_beli === 'ml' && matchMat.unit === 'liter') addQty = qty / 1000
         else if (form.satuan_beli === 'liter' && matchMat.unit === 'ml') addQty = qty * 1000
-        else if (form.satuan_beli === matchMat.unit) addQty = qty
 
-        const newStock = (matchMat.stock_qty || 0) + addQty
+        const newStock = parseFloat(((matchMat.stock_qty || 0) + addQty).toFixed(3))
         await supabase.from('raw_materials').update({
           stock_qty: newStock,
-          last_price: Math.round(parseInt(form.amount) / qty),
+          last_price: hargaPerSatuan,
         }).eq('id', matchMat.id)
 
-        setSyncMsg(`✅ Stok "${matchMat.name}" bertambah ${addQty} ${matchMat.unit} → total ${newStock.toFixed(2)} ${matchMat.unit}`)
+        const { data: freshMat } = await supabase.from('raw_materials').select('*').order('name')
+        setMaterials(freshMat || [])
+        setSyncMsg(`✅ Stok "${matchMat.name}" +${addQty} ${matchMat.unit} → total ${newStock} ${matchMat.unit}`)
+
       } else {
-        setSyncMsg(`⚠️ Bahan "${form.description}" tidak ditemukan di Stok. Tambahkan manual di menu Stok.`)
+        // ⚡ TIDAK DITEMUKAN → buat bahan baru otomatis di Stok
+        const { data: newMat, error: matErr } = await supabase.from('raw_materials').insert({
+          name: desc,
+          unit: form.satuan_beli,
+          stock_qty: qty,
+          min_stock: 0,
+          last_price: hargaPerSatuan,
+        }).select().single()
+
+        if (!matErr && newMat) {
+          const { data: freshMat } = await supabase.from('raw_materials').select('*').order('name')
+          setMaterials(freshMat || [])
+          setSyncMsg(`✅ Bahan baru "${desc}" otomatis dibuat di Stok: ${qty} ${form.satuan_beli} · Rp ${hargaPerSatuan.toLocaleString('id-ID')}/${form.satuan_beli}`)
+        } else {
+          setSyncMsg(`❌ Gagal buat bahan baru: ${matErr?.message || 'Unknown error'}`)
+        }
       }
     }
 
