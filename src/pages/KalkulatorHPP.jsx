@@ -58,10 +58,23 @@ export default function KalkulatorHPP() {
     })
   }, [])
 
-  // Sort bahan: utama → bumbu → kemasan → lainnya
+  // Deteksi kategori otomatis dari nama bahan
+  const getKat = (name) => {
+    const n = (name || '').toLowerCase()
+    if (['bowl','sendok','kresek','stiker','label','plastik','kertas','box','cup','sedotan','tissue'].some(k => n.includes(k))) return 'kemasan'
+    if (['bawang','lada','garam','gula','kecap','saos','saus','minyak','totole','kaldu','merica','kunyit','jahe','serai','daun','cabe','cabai','kemiri','ketumbar'].some(k => n.includes(k))) return 'bumbu'
+    return 'utama'
+  }
+
+  const KAT_ORDER = { utama: 0, bumbu: 1, kemasan: 2 }
+  const KAT_STYLE = {
+    utama:   { color: '#2D5016', bg: '#E8F5E0', label: '🥩 Produk Utama' },
+    bumbu:   { color: '#C8881A', bg: '#FFF3D6', label: '🧄 Bumbu & Rempah' },
+    kemasan: { color: '#0077B6', bg: '#E0F4FF', label: '📦 Kemasan' },
+  }
+
   const sortRecipes = (recs) => {
-    const order = { utama: 0, bumbu: 1, kemasan: 2, lainnya: 3 }
-    return [...recs].sort((a, b) => (order[a.bahan_kategori || 'lainnya'] ?? 3) - (order[b.bahan_kategori || 'lainnya'] ?? 3))
+    return [...recs].sort((a, b) => (KAT_ORDER[getKat(a.material_name)] ?? 2) - (KAT_ORDER[getKat(b.material_name)] ?? 2))
   }
 
   const calcHPP = (productId) => {
@@ -69,13 +82,13 @@ export default function KalkulatorHPP() {
     let total = 0
     const details = recs.map(r => {
       const mat = materials[r.raw_material_id]
-      if (!mat) return { name: r.material_name, cost: 0, qty: r.qty_used, unit: r.unit, kat: r.bahan_kategori || 'lainnya' }
+      if (!mat) return { name: r.material_name, cost: 0, qty: r.qty_used, unit: r.unit }
       let qty = r.qty_used
       if (r.unit === 'gram' && mat.unit === 'kg') qty = r.qty_used / 1000
       else if (r.unit === 'ml' && mat.unit === 'liter') qty = r.qty_used / 1000
       const cost = qty * mat.last_price
       total += cost
-      return { name: r.material_name, cost, qty: r.qty_used, unit: r.unit, kat: r.bahan_kategori || 'lainnya' }
+      return { name: r.material_name, cost, qty: r.qty_used, unit: r.unit }
     })
     const overheadCost = total * (overhead / 100)
     const hpp = total + overheadCost
@@ -170,13 +183,7 @@ export default function KalkulatorHPP() {
                 syncHPPToMenu(p.id, hpp)
               }
 
-              // Group by kategori
-              const grouped = {}
-              details.forEach(d => {
-                const kat = d.kat || 'lainnya'
-                if (!grouped[kat]) grouped[kat] = []
-                grouped[kat].push(d)
-              })
+              // Group ditangani di rendering
 
               return (
                 <div key={p.id} className="card">
@@ -189,17 +196,18 @@ export default function KalkulatorHPP() {
                   ) : (
                     <div>
                       {/* Tampilkan per kategori */}
-                      {BAHAN_KATEGORI.map(kat => {
-                        const items = grouped[kat.key]
-                        if (!items || items.length === 0) return null
+                      {Object.entries(KAT_STYLE).map(([katKey, kat]) => {
+                        const items = details.filter(d => getKat(d.name) === katKey)
+                        if (items.length === 0) return null
                         return (
-                          <div key={kat.key} style={{ marginBottom: 8 }}>
+                          <div key={katKey} style={{ marginBottom: 8 }}>
                             <div style={{ fontSize: 10, fontWeight: 700, color: kat.color, background: kat.bg, padding: '2px 8px', borderRadius: 4, display: 'inline-block', marginBottom: 4 }}>
                               {kat.label}
                             </div>
                             {items.map((d, i) => (
                               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '2px 0', color: 'var(--text-muted)' }}>
-                                <span>{d.name} ({d.qty} {d.unit})</span>
+                                <span style={{ color: kat.color, fontWeight: 600, marginRight: 4 }}>{i+1}.</span>
+                                <span style={{ flex: 1 }}>{d.name} ({d.qty} {d.unit})</span>
                                 <span>{formatRp(d.cost)}</span>
                               </div>
                             ))}
