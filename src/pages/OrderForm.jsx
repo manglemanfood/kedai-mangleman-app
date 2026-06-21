@@ -1,7 +1,14 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-const formatRp = (n) => 'Rp ' + Number(n).toLocaleString('id-ID')
+// Format harga: tampilkan desimal hanya jika memang ada
+const formatHarga = (n) => {
+  const num = Number(n || 0)
+  if (num % 1 === 0) return 'Rp ' + num.toLocaleString('id-ID')
+  return 'Rp ' + num.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+}
+
+const ADMIN_WA = '6281234567890'
 
 const categoryLabel = {
   ricebowl: '🍚 Rice Bowl',
@@ -11,11 +18,13 @@ const categoryLabel = {
   snack: '🍿 Snack',
 }
 
-// ⚠️ GANTI dengan nomor WA admin (format: 628xxxxxxxxxx)
-const ADMIN_WA = '6281234567890'
+// Kategori yang pakai dropdown (pilih varian)
+const DROPDOWN_CATEGORIES = ['mie', 'dimsum']
 
 function buildWAMessage(info, cartItems, cart, total, orderNum) {
-  const items = cartItems.map(p => `  • ${p.name} x${cart[p.id]} = ${formatRp(p.price * cart[p.id])}`).join('\n')
+  const items = cartItems.map(p =>
+    `  • ${p.name} x${cart[p.id]} = ${formatHarga(p.price * cart[p.id])}`
+  ).join('\n')
   return encodeURIComponent(
 `🍱 *ORDER BARU - Kedai MangLeman*
 ━━━━━━━━━━━━━━━━━━
@@ -30,14 +39,15 @@ ${info.catatan ? `📝 *Catatan:* ${info.catatan}` : ''}
 ${items}
 
 ━━━━━━━━━━━━━━━━━━
-💰 *TOTAL: ${formatRp(total)}*
+💰 *TOTAL: ${formatHarga(total)}*
 ━━━━━━━━━━━━━━━━━━
-Mohon konfirmasi pesanan saya ya mangleman 🙏`)
+Mohon konfirmasi pesanan saya ya kak 🙏`)
 }
 
 export default function OrderForm() {
   const [step, setStep] = useState(1)
   const [products, setProducts] = useState([])
+  const [promos, setPromos] = useState([])
   const [cart, setCart] = useState({})
   const [info, setInfo] = useState({ name: '', gedung: '', lantai: '', phone: '', catatan: '' })
   const [loading, setLoading] = useState(false)
@@ -46,11 +56,25 @@ export default function OrderForm() {
   const [waUrl, setWaUrl] = useState('')
 
   useEffect(() => {
+    // Load products
     supabase.from('products').select('*').eq('is_available', true).order('category').then(({ data }) => {
       if (data) setProducts(data)
     })
+    // Load promo bundling aktif hari ini
+    supabase.from('bundling_packages').select('*').eq('is_active', true).in('periode', ['harian']).then(({ data }) => {
+      if (data) {
+        const today = new Date().toISOString().split('T')[0]
+        const active = data.filter(b => {
+          if (b.start_date && b.start_date > today) return false
+          if (b.end_date && b.end_date < today) return false
+          return true
+        })
+        setPromos(active)
+      }
+    })
   }, [])
 
+  // Group by category
   const grouped = products.reduce((acc, p) => {
     if (!acc[p.category]) acc[p.category] = []
     acc[p.category].push(p)
@@ -68,6 +92,16 @@ export default function OrderForm() {
   const cartItems = products.filter(p => cart[p.id])
   const total = cartItems.reduce((sum, p) => sum + p.price * (cart[p.id] || 0), 0)
   const totalQty = Object.values(cart).reduce((a, b) => a + b, 0)
+
+  const addPromoToCart = (promo) => {
+    const items = typeof promo.items === 'string' ? JSON.parse(promo.items) : promo.items || []
+    items.forEach(item => {
+      const prod = products.find(p => p.name === item.name)
+      if (prod) {
+        for (let i = 0; i < (item.qty || 1); i++) addItem(prod.id)
+      }
+    })
+  }
 
   const submitOrder = async () => {
     setLoading(true)
@@ -125,11 +159,7 @@ export default function OrderForm() {
 
       const num = order.order_number || order.id.slice(0, 8).toUpperCase()
       setOrderNum(num)
-
-      // Build WA URL
-      const msg = buildWAMessage(info, cartItems, cart, total, num)
-      setWaUrl(`https://wa.me/${ADMIN_WA}?text=${msg}`)
-
+      setWaUrl(`https://wa.me/${ADMIN_WA}?text=${buildWAMessage(info, cartItems, cart, total, num)}`)
       setStep(4)
     } catch (e) {
       setError('Gagal mengirim pesanan. Coba lagi ya!')
@@ -138,81 +168,48 @@ export default function OrderForm() {
     setLoading(false)
   }
 
-  // ─── STEP 4: Sukses + WA ───────────────────────────────────
+  // ── STEP 4: Sukses ───────────────────────────────
   if (step === 4) return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #1A2E0A 0%, #2D5016 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
       <div style={{ background: '#fff', borderRadius: 20, padding: '2rem', textAlign: 'center', maxWidth: 400, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
         <div style={{ fontSize: 60, marginBottom: 12 }}>✅</div>
         <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 6 }}>Pesanan Masuk!</h2>
-        <p style={{ color: '#666', fontSize: 13, marginBottom: 16 }}>Terima kasih <strong>{info.name}</strong>! Pesananmu sudah kami terima.</p>
-
-        {/* Order number */}
+        <p style={{ color: '#666', fontSize: 13, marginBottom: 16 }}>Terima kasih <strong>{info.name}</strong>!</p>
         <div style={{ background: '#F7F5F0', borderRadius: 12, padding: '12px', marginBottom: 16 }}>
           <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>Nomor Order</div>
           <div style={{ fontSize: 22, fontWeight: 700, color: '#E8A838', letterSpacing: 2 }}>{orderNum}</div>
         </div>
-
-        {/* Lokasi */}
         <div style={{ background: '#E8F5E0', borderRadius: 10, padding: '10px', marginBottom: 16, fontSize: 13, color: '#2D5016' }}>
           📍 Dikirim ke <strong>{info.gedung}</strong>, Lantai <strong>{info.lantai}</strong>
         </div>
-
-        {/* Ringkasan order */}
         <div style={{ background: '#F7F5F0', borderRadius: 10, padding: '12px', marginBottom: 20, textAlign: 'left' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#888', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Ringkasan Pesanan</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#888', marginBottom: 8, textTransform: 'uppercase' }}>Ringkasan</div>
           {cartItems.map(p => (
             <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
-              <span>{p.name} <span style={{ color: '#888' }}>x{cart[p.id]}</span></span>
-              <span style={{ fontWeight: 600 }}>{formatRp(p.price * cart[p.id])}</span>
+              <span>{p.name} x{cart[p.id]}</span>
+              <span style={{ fontWeight: 600 }}>{formatHarga(p.price * cart[p.id])}</span>
             </div>
           ))}
           <div style={{ borderTop: '1px solid #E5E0D8', marginTop: 8, paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 15, color: '#E8A838' }}>
-            <span>Total</span>
-            <span>{formatRp(total)}</span>
+            <span>Total</span><span>{formatHarga(total)}</span>
           </div>
         </div>
-
-        {/* TOMBOL WA — CTA utama */}
-        <a
-          href={waUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-            width: '100%', padding: '14px',
-            background: '#25D366', color: '#fff',
-            borderRadius: 12, fontWeight: 700, fontSize: 15,
-            textDecoration: 'none', marginBottom: 10,
-            boxShadow: '0 4px 15px rgba(37,211,102,0.4)',
-          }}
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="white">
-            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-          </svg>
+        <a href={waUrl} target="_blank" rel="noopener noreferrer"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, width: '100%', padding: '14px', background: '#25D366', color: '#fff', borderRadius: 12, fontWeight: 700, fontSize: 15, textDecoration: 'none', marginBottom: 10, boxShadow: '0 4px 15px rgba(37,211,102,0.4)' }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
           Konfirmasi via WhatsApp
         </a>
-
-        <p style={{ fontSize: 11, color: '#aaa', marginBottom: 16 }}>
-          Klik tombol di atas untuk mengirim detail pesanan ke admin kami via WhatsApp
-        </p>
-
-        <button
-          onClick={() => {
-            setStep(1); setCart({})
-            setInfo({ name: '', gedung: '', lantai: '', phone: '', catatan: '' })
-            setOrderNum(''); setWaUrl('')
-          }}
-          style={{ width: '100%', padding: '10px', background: '#F0EDE8', color: '#666', border: 'none', borderRadius: 10, fontWeight: 600, cursor: 'pointer', fontSize: 13 }}
-        >
+        <button onClick={() => { setStep(1); setCart({}); setInfo({ name: '', gedung: '', lantai: '', phone: '', catatan: '' }); setOrderNum(''); setWaUrl('') }}
+          style={{ width: '100%', padding: '10px', background: '#F0EDE8', color: '#666', border: 'none', borderRadius: 10, fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
           Pesan Lagi
         </button>
       </div>
     </div>
   )
 
-  // ─── STEP 1: Info diri ────────────────────────────────────
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #1A2E0A 0%, #2D5016 100%)' }}>
+      {/* Header */}
       <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1rem', textAlign: 'center' }}>
         <div style={{ fontSize: 28, marginBottom: 4 }}>🍱</div>
         <div style={{ color: '#E8A838', fontWeight: 700, fontSize: 20 }}>Kedai MangLeman</div>
@@ -223,13 +220,10 @@ export default function OrderForm() {
       <div style={{ display: 'flex', justifyContent: 'center', gap: 8, padding: '1rem 0' }}>
         {['Info Diri', 'Pilih Menu', 'Konfirmasi'].map((label, i) => (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <div style={{
-              width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: step > i + 1 ? '#E8A838' : step === i + 1 ? '#fff' : 'rgba(255,255,255,0.2)',
-              color: step === i + 1 ? '#1A2E0A' : step > i + 1 ? '#fff' : 'rgba(255,255,255,0.5)',
-              fontSize: 12, fontWeight: 700,
-            }}>{step > i + 1 ? '✓' : i + 1}</div>
-            <span style={{ fontSize: 11, color: step === i + 1 ? '#fff' : 'rgba(255,255,255,0.5)' }}>{label}</span>
+            <div style={{ width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: step > i+1 ? '#E8A838' : step === i+1 ? '#fff' : 'rgba(255,255,255,0.2)', color: step === i+1 ? '#1A2E0A' : step > i+1 ? '#fff' : 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: 700 }}>
+              {step > i+1 ? '✓' : i+1}
+            </div>
+            <span style={{ fontSize: 11, color: step === i+1 ? '#fff' : 'rgba(255,255,255,0.5)' }}>{label}</span>
             {i < 2 && <div style={{ width: 20, height: 1, background: 'rgba(255,255,255,0.2)', marginLeft: 4 }} />}
           </div>
         ))}
@@ -237,32 +231,32 @@ export default function OrderForm() {
 
       <div style={{ maxWidth: 480, margin: '0 auto', padding: '0 1rem 2rem' }}>
 
-        {/* STEP 1 */}
+        {/* STEP 1: Info diri */}
         {step === 1 && (
           <div style={{ background: '#fff', borderRadius: 20, padding: '1.5rem', boxShadow: '0 10px 40px rgba(0,0,0,0.2)' }}>
             <h3 style={{ marginBottom: 20, fontWeight: 700, fontSize: 16 }}>📝 Info Pemesanan</h3>
-            {['name', 'gedung', 'lantai', 'phone'].map(field => (
-              <div key={field} style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#666', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  {field === 'name' ? 'Nama Lengkap *' : field === 'gedung' ? 'Nama Gedung *' : field === 'lantai' ? 'Lantai *' : 'No. HP (untuk konfirmasi WA)'}
-                </label>
-                <input
-                  type={field === 'phone' ? 'tel' : 'text'}
-                  placeholder={field === 'name' ? 'Contoh: Budi Santoso' : field === 'gedung' ? 'Contoh: Gedung A / Tower 1' : field === 'lantai' ? 'Contoh: 5' : '08xxxxxxxxxx'}
-                  value={info[field]}
-                  onChange={e => setInfo(i => ({ ...i, [field]: e.target.value }))}
+            {[
+              { key: 'name', label: 'Nama Lengkap *', placeholder: 'Contoh: Budi Santoso', type: 'text' },
+              { key: 'gedung', label: 'Nama Gedung *', placeholder: 'Contoh: Gedung A / Tower 1', type: 'text' },
+              { key: 'lantai', label: 'Lantai *', placeholder: 'Contoh: 5', type: 'text' },
+              { key: 'phone', label: 'No. HP (untuk konfirmasi WA)', placeholder: '08xxxxxxxxxx', type: 'tel' },
+            ].map(field => (
+              <div key={field.key} style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#666', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.5 }}>{field.label}</label>
+                <input type={field.type} placeholder={field.placeholder} value={info[field.key]}
+                  onChange={e => setInfo(i => ({ ...i, [field.key]: e.target.value }))}
                   style={{ width: '100%', padding: '12px 14px', border: '1.5px solid #E5E0D8', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
                   onFocus={e => e.target.style.borderColor = '#E8A838'}
-                  onBlur={e => e.target.style.borderColor = '#E5E0D8'}
-                />
+                  onBlur={e => e.target.style.borderColor = '#E5E0D8'} />
               </div>
             ))}
             <div style={{ marginBottom: 20 }}>
               <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#666', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.5 }}>Catatan (opsional)</label>
-              <textarea placeholder="Contoh: Tidak pakai sambal, tambah nasi" value={info.catatan} onChange={e => setInfo(i => ({ ...i, catatan: e.target.value }))} rows={2}
+              <textarea placeholder="Contoh: Tidak pakai sambal, tambah nasi" value={info.catatan}
+                onChange={e => setInfo(i => ({ ...i, catatan: e.target.value }))} rows={2}
                 style={{ width: '100%', padding: '12px 14px', border: '1.5px solid #E5E0D8', borderRadius: 10, fontSize: 14, outline: 'none', resize: 'none', boxSizing: 'border-box' }} />
             </div>
-            <button onClick={() => { if (!info.name || !info.gedung || !info.lantai) { alert('Nama, Gedung, dan Lantai wajib diisi!'); return; } setStep(2) }}
+            <button onClick={() => { if (!info.name || !info.gedung || !info.lantai) { alert('Nama, Gedung, dan Lantai wajib diisi!'); return } setStep(2) }}
               style={{ width: '100%', padding: 14, background: '#E8A838', color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
               Pilih Menu →
             </button>
@@ -272,35 +266,129 @@ export default function OrderForm() {
         {/* STEP 2: Menu */}
         {step === 2 && (
           <div>
-            {Object.entries(grouped).map(([cat, items]) => (
-              <div key={cat} style={{ background: '#fff', borderRadius: 16, padding: '1.25rem', marginBottom: 12, boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}>
-                <h4 style={{ fontSize: 14, fontWeight: 700, color: '#2D5016', marginBottom: 12 }}>{categoryLabel[cat] || cat}</h4>
-                {items.map(p => (
-                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid #F0EDE8' }}>
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 500 }}>{p.name}</div>
-                      <div style={{ fontSize: 13, color: '#E8A838', fontWeight: 600 }}>{formatRp(p.price)}</div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      {cart[p.id] ? (
-                        <>
-                          <button onClick={() => removeItem(p.id)} style={{ width: 30, height: 30, borderRadius: '50%', border: '2px solid #E8A838', background: '#fff', color: '#E8A838', fontWeight: 700, cursor: 'pointer', fontSize: 16 }}>−</button>
-                          <span style={{ minWidth: 20, textAlign: 'center', fontWeight: 700 }}>{cart[p.id]}</span>
-                          <button onClick={() => addItem(p.id)} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: '#E8A838', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 16 }}>+</button>
-                        </>
-                      ) : (
-                        <button onClick={() => addItem(p.id)} style={{ padding: '6px 16px', background: '#E8A838', color: '#fff', border: 'none', borderRadius: 20, fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>+ Tambah</button>
+            {/* PROMO BANNER - paling atas */}
+            {promos.length > 0 && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                  <span style={{ fontSize: 16 }}>🔥</span>
+                  <span style={{ fontWeight: 700, fontSize: 14, color: '#fff' }}>Promo Hari Ini!</span>
+                </div>
+                {promos.map(promo => {
+                  const items = typeof promo.items === 'string' ? JSON.parse(promo.items) : promo.items || []
+                  const pctDiskon = promo.normal_price > 0 ? Math.round((promo.diskon / promo.normal_price) * 100) : 0
+                  return (
+                    <div key={promo.id} style={{ background: 'linear-gradient(135deg, #E8A838 0%, #C8881A 100%)', borderRadius: 16, padding: '14px 16px', marginBottom: 10, position: 'relative', overflow: 'hidden', boxShadow: '0 4px 20px rgba(232,168,56,0.4)' }}>
+                      <div style={{ position: 'absolute', top: 0, right: 0, background: '#DC2626', color: '#fff', fontSize: 12, fontWeight: 800, padding: '4px 12px', borderRadius: '0 16px 0 10px' }}>
+                        -{pctDiskon}%
+                      </div>
+                      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.8)', fontWeight: 600, marginBottom: 3, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        {promo.tag || '🎁'} Paket Hemat
+                      </div>
+                      <div style={{ fontWeight: 800, fontSize: 15, color: '#fff', marginBottom: 6 }}>{promo.name}</div>
+                      {items.length > 0 && (
+                        <div style={{ marginBottom: 10 }}>
+                          {items.map((item, i) => (
+                            <div key={i} style={{ fontSize: 12, color: 'rgba(255,255,255,0.9)' }}>
+                              • {item.qty > 1 ? `${item.qty}x ` : ''}{item.name}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', textDecoration: 'line-through' }}>
+                            Rp {Number(promo.normal_price).toLocaleString('id-ID')}
+                          </div>
+                          <div style={{ fontSize: 20, fontWeight: 800, color: '#fff' }}>
+                            Rp {Number(promo.bundle_price).toLocaleString('id-ID')}
+                          </div>
+                        </div>
+                        <button onClick={() => addPromoToCart(promo)}
+                          style={{ background: '#fff', color: '#C8881A', border: 'none', borderRadius: 10, padding: '10px 16px', fontWeight: 800, fontSize: 13, cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
+                          + Pilih Paket
+                        </button>
+                      </div>
+                      {promo.strategy && (
+                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 6, fontStyle: 'italic' }}>💡 {promo.strategy}</div>
                       )}
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
+                <div style={{ height: 1, background: 'rgba(255,255,255,0.15)', marginBottom: 14 }} />
               </div>
-            ))}
+            )}
+
+            {/* Menu list */}
+            {Object.entries(grouped).map(([cat, items]) => {
+              const isDropdown = DROPDOWN_CATEGORIES.includes(cat)
+              return (
+                <div key={cat} style={{ background: '#fff', borderRadius: 16, padding: '1.25rem', marginBottom: 12, boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}>
+                  <h4 style={{ fontSize: 14, fontWeight: 700, color: '#2D5016', marginBottom: 12 }}>
+                    {categoryLabel[cat] || cat}
+                  </h4>
+
+                  {isDropdown ? (
+                    /* Dropdown untuk Mie & Dimsum */
+                    <div>
+                      <select
+                        defaultValue=""
+                        onChange={e => {
+                          if (e.target.value) addItem(e.target.value)
+                          e.target.value = ''
+                        }}
+                        style={{ width: '100%', padding: '12px 14px', border: '1.5px solid #E5E0D8', borderRadius: 10, fontSize: 14, background: '#fff', cursor: 'pointer', marginBottom: 10 }}>
+                        <option value="" disabled>Pilih {categoryLabel[cat]}...</option>
+                        {items.map(p => (
+                          <option key={p.id} value={p.id}>{p.name} — {formatHarga(p.price)}</option>
+                        ))}
+                      </select>
+                      {/* Tampilkan yang sudah dipilih */}
+                      {items.filter(p => cart[p.id]).map(p => (
+                        <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderTop: '1px solid #F0EDE8' }}>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</div>
+                            <div style={{ fontSize: 12, color: '#E8A838', fontWeight: 600 }}>{formatHarga(p.price)}</div>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <button onClick={() => removeItem(p.id)} style={{ width: 28, height: 28, borderRadius: '50%', border: '2px solid #E8A838', background: '#fff', color: '#E8A838', fontWeight: 700, cursor: 'pointer', fontSize: 16 }}>−</button>
+                            <span style={{ minWidth: 20, textAlign: 'center', fontWeight: 700 }}>{cart[p.id]}</span>
+                            <button onClick={() => addItem(p.id)} style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: '#E8A838', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 16 }}>+</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    /* Normal list untuk kategori lain */
+                    items.map(p => (
+                      <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid #F0EDE8' }}>
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 500 }}>{p.name}</div>
+                          <div style={{ fontSize: 13, color: '#E8A838', fontWeight: 600 }}>{formatHarga(p.price)}</div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          {cart[p.id] ? (
+                            <>
+                              <button onClick={() => removeItem(p.id)} style={{ width: 30, height: 30, borderRadius: '50%', border: '2px solid #E8A838', background: '#fff', color: '#E8A838', fontWeight: 700, cursor: 'pointer', fontSize: 16 }}>−</button>
+                              <span style={{ minWidth: 20, textAlign: 'center', fontWeight: 700 }}>{cart[p.id]}</span>
+                              <button onClick={() => addItem(p.id)} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: '#E8A838', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 16 }}>+</button>
+                            </>
+                          ) : (
+                            <button onClick={() => addItem(p.id)} style={{ padding: '6px 16px', background: '#E8A838', color: '#fff', border: 'none', borderRadius: 20, fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>+ Tambah</button>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )
+            })}
+
+            {/* Cart sticky footer */}
             {totalQty > 0 && (
               <div style={{ position: 'sticky', bottom: 16, background: '#1A2E0A', borderRadius: 16, padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 8px 30px rgba(0,0,0,0.3)' }}>
                 <div>
                   <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>{totalQty} item</div>
-                  <div style={{ color: '#E8A838', fontWeight: 700, fontSize: 16 }}>{formatRp(total)}</div>
+                  <div style={{ color: '#E8A838', fontWeight: 700, fontSize: 16 }}>{formatHarga(total)}</div>
                 </div>
                 <button onClick={() => setStep(3)} style={{ padding: '10px 20px', background: '#E8A838', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, cursor: 'pointer' }}>
                   Lanjut →
@@ -326,22 +414,18 @@ export default function OrderForm() {
               {cartItems.map(p => (
                 <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #F0EDE8', fontSize: 14 }}>
                   <span>{p.name} <span style={{ color: '#888' }}>x{cart[p.id]}</span></span>
-                  <span style={{ fontWeight: 600 }}>{formatRp(p.price * cart[p.id])}</span>
+                  <span style={{ fontWeight: 600 }}>{formatHarga(p.price * cart[p.id])}</span>
                 </div>
               ))}
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0 0', fontWeight: 700, fontSize: 16, color: '#E8A838' }}>
-                <span>Total</span><span>{formatRp(total)}</span>
+                <span>Total</span><span>{formatHarga(total)}</span>
               </div>
             </div>
-
-            {/* Info WA */}
-            <div style={{ background: '#E8F5E0', borderRadius: 10, padding: '10px 12px', marginBottom: 16, fontSize: 13, color: '#2D5016', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            <div style={{ background: '#E8F5E0', borderRadius: 10, padding: '10px 12px', marginBottom: 16, fontSize: 13, color: '#2D5016', display: 'flex', gap: 8 }}>
               <span style={{ fontSize: 18 }}>💬</span>
-              <span>Setelah pesan, kamu akan diarahkan untuk <strong>konfirmasi via WhatsApp</strong> ke admin kami.</span>
+              <span>Setelah pesan, kamu akan diarahkan konfirmasi via <strong>WhatsApp</strong>.</span>
             </div>
-
             {error && <div style={{ background: '#FFE8E8', color: '#C0392B', padding: '10px', borderRadius: 8, marginBottom: 12, fontSize: 13 }}>{error}</div>}
-
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={() => setStep(2)} style={{ flex: 1, padding: 12, background: '#F0EDE8', color: '#666', border: 'none', borderRadius: 10, fontWeight: 600, cursor: 'pointer' }}>← Edit</button>
               <button onClick={submitOrder} disabled={loading} style={{ flex: 2, padding: 12, background: '#2D5016', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, cursor: 'pointer', fontSize: 15 }}>
