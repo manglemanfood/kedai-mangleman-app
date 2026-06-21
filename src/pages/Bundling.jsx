@@ -160,37 +160,6 @@ export default function Bundling() {
       bundle_price: b.bundle_price,
       normal_price: b.normal_price,
       notes: b.notes || '',
-    })
-  }
-
-  const saveEditSaved = async () => {
-    if (!editSaved) return
-    setSaving(true)
-    await supabase.from('bundling_packages').update({
-      name: editSavedForm.name,
-      strategy: editSavedForm.strategy,
-      periode: editSavedForm.periode,
-      diskon: parseInt(editSavedForm.diskon) || 0,
-      bundle_price: parseInt(editSavedForm.bundle_price) || 0,
-      notes: editSavedForm.notes,
-    }).eq('id', editSaved.id)
-    const { data: fresh } = await supabase.from('bundling_packages').select('*').order('created_at', { ascending: false })
-    setSavedBundles(fresh || [])
-    setSaving(false)
-    setEditSaved(null)
-  }
-
-  const openEditSaved = (b) => {
-    setEditSaved(b)
-    const items = typeof b.items === 'string' ? JSON.parse(b.items) : b.items || []
-    setEditSavedForm({
-      name: b.name,
-      strategy: b.strategy || '',
-      periode: b.periode,
-      diskon: b.diskon,
-      bundle_price: b.bundle_price,
-      normal_price: b.normal_price,
-      notes: b.notes || '',
       start_date: b.start_date || '',
       end_date: b.end_date || '',
       is_active: b.is_active,
