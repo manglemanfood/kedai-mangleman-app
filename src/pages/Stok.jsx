@@ -26,6 +26,8 @@ export default function Stok() {
   const [form, setForm] = useState({ name: '', unit: 'kg', stock_qty: '', min_stock: '', last_price: '' })
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [searchBahan, setSearchBahan] = useState('')
+  const [searchMenu, setSearchMenu] = useState('')
 
   const fetchAll = async () => {
     setLoading(true)
@@ -231,11 +233,14 @@ export default function Stok() {
         <>
           {tab === 'bahan' && (
             <div>
-              {materials.length === 0 ? (
-                <div className="card empty-state"><p>Belum ada bahan baku. Tambahkan sekarang!</p></div>
+              <div className="card mb-2" style={{ padding: '0.75rem 1rem' }}>
+            <input className="form-control" placeholder="🔍 Cari nama bahan..." value={searchBahan} onChange={e => setSearchBahan(e.target.value)} />
+          </div>
+          {materials.filter(m => !searchBahan || m.name.toLowerCase().includes(searchBahan.toLowerCase())).length === 0 ? (
+                <div className="card empty-state"><p>{searchBahan ? `Bahan "${searchBahan}" tidak ditemukan` : 'Belum ada bahan baku. Tambahkan sekarang!'}</p></div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  {materials.map(m => {
+                  {materials.filter(m => !searchBahan || m.name.toLowerCase().includes(searchBahan.toLowerCase())).map(m => {
                     const isLow = m.stock_qty <= m.min_stock && m.min_stock > 0
                     const estimasiKonv = estimasiPorsi(m)
                     const estimasiResep = estimasiDariResep(m)
@@ -305,13 +310,16 @@ export default function Stok() {
           )}
 
           {tab === 'menu' && (
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            <div className="card mb-2" style={{ padding: '0.75rem 1rem' }}>
+            <input className="form-control" placeholder="🔍 Cari nama menu..." value={searchMenu} onChange={e => setSearchMenu(e.target.value)} />
+          </div>
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
               <table className="table">
                 <thead>
                   <tr><th>Menu</th><th>Harga</th><th>Stok Ready</th><th>Tersedia di Order</th><th>Aksi</th></tr>
                 </thead>
                 <tbody>
-                  {products.map(p => {
+                  {products.filter(p => !searchMenu || p.name.toLowerCase().includes(searchMenu.toLowerCase())).map(p => {
                     // Hitung min porsi yang bisa dibuat dari semua bahan
                     const recsForProd = recipes.filter(r => r.product_id === p.id)
                     const minPorsi = recsForProd.length > 0 ? Math.min(...recsForProd.map(r => {

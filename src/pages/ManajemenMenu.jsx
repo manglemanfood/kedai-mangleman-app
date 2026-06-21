@@ -11,6 +11,7 @@ export default function ManajemenMenu() {
   const [form, setForm] = useState({ name: '', category: 'ricebowl', price: '', hpp: '', is_available: true })
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
 
   const categories = ['ricebowl','mie','dimsum','minuman','snack']
   const catLabel = { ricebowl:'🍚 Rice Bowl', mie:'🍜 Mie', dimsum:'🥟 Dimsum', minuman:'🥤 Minuman', snack:'🍿 Snack' }
@@ -95,6 +96,9 @@ export default function ManajemenMenu() {
           </div>
         </div>
       )}
+      <div className="card mb-2" style={{ padding: '0.75rem 1rem' }}>
+        <input className="form-control" placeholder="🔍 Cari nama menu..." value={search} onChange={e => setSearch(e.target.value)} />
+      </div>
       {loading ? <div className="loading"><div className="spinner" /></div> : (
         Object.entries(grouped).map(([cat, items]) => items.length === 0 ? null : (
           <div key={cat} className="card mb-2" style={{ padding: 0, overflow: 'hidden' }}>
@@ -102,7 +106,7 @@ export default function ManajemenMenu() {
             <table className="table">
               <thead><tr><th>Nama Menu</th><th>Harga Jual</th><th>HPP</th><th>Margin</th><th>Status</th><th>Aksi</th></tr></thead>
               <tbody>
-                {items.map(p => {
+                {filtered.map(p => {
                   const margin = p.price - (p.hpp || 0)
                   const marginPct = p.price > 0 && p.hpp > 0 ? ((margin / p.price) * 100).toFixed(0) : '-'
                   return (
@@ -124,7 +128,7 @@ export default function ManajemenMenu() {
               </tbody>
             </table>
           </div>
-        ))
+        ))})
       )}
     </div>
   )

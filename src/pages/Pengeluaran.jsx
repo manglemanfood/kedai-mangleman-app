@@ -102,12 +102,17 @@ export default function Pengeluaran() {
         </div>
       </div>
 
+      {/* Search */}
+      <div className="card mb-2" style={{ padding: '0.75rem 1rem' }}>
+        <input className="form-control" placeholder="🔍 Cari deskripsi atau supplier..." value={search} onChange={e => setSearch(e.target.value)} />
+      </div>
+
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         {loading ? <div className="loading"><div className="spinner" /></div> : expenses.length === 0 ? <div className="empty-state"><p>Belum ada pengeluaran</p></div> : (
           <table className="table">
             <thead><tr><th>Tanggal</th><th>Kategori</th><th>Deskripsi</th><th>Supplier</th><th>Jumlah</th><th>Aksi</th></tr></thead>
             <tbody>
-              {expenses.map(e => (
+              {expenses.filter(e => !search || e.description.toLowerCase().includes(search.toLowerCase()) || (e.supplier || '').toLowerCase().includes(search.toLowerCase())).map(e => (
                 <tr key={e.id}>
                   <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{new Date(e.expense_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: '2-digit' })}</td>
                   <td style={{ fontSize: 13 }}>{CAT_ICON[e.category]} {e.category}</td>

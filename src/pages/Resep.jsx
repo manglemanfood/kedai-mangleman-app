@@ -57,13 +57,18 @@ export default function Resep() {
       
       <div className="page-header"><h1>Manajemen Resep 📖</h1><p>Atur bahan-bahan untuk setiap menu</p></div>
       <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '1rem' }}>
+        <div>
+          <div className="card mb-1" style={{ padding: '0.75rem' }}>
+            <input className="form-control" placeholder="🔍 Cari menu..." value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
         <div className="card" style={{ padding: 0, height: 'fit-content' }}>
-          {loading ? <div className="loading"><div className="spinner" /></div> : products.map(p => (
+          {loading ? <div className="loading"><div className="spinner" /></div> : products.filter(p => !search || p.name.toLowerCase().includes(search.toLowerCase())).map(p => (
             <button key={p.id} onClick={() => setSelected(p)} style={{ width: '100%', padding: '12px 16px', background: selected?.id === p.id ? 'var(--primary-light)' : 'transparent', border: 'none', borderBottom: '1px solid var(--border)', textAlign: 'left', cursor: 'pointer', fontSize: 13, fontWeight: selected?.id === p.id ? 700 : 400, color: selected?.id === p.id ? 'var(--primary-dark)' : 'var(--text)' }}>
               {p.name}
               {recipes[p.id]?.length > 0 && <span style={{ float: 'right', fontSize: 11, color: 'var(--text-muted)' }}>{recipes[p.id].length} bahan</span>}
             </button>
           ))}
+        </div>
         </div>
         <div>
           {!selected ? (

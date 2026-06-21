@@ -12,13 +12,24 @@ export default function KalkulatorHPP() {
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('hpp')
   const [konversiList, setKonversiList] = useState([])
+  const [konversiLoading, setKonversiLoading] = useState(false)
+  const [searchHPP, setSearchHPP] = useState('')
+  const [searchKonversi, setSearchKonversi] = useState('')
   const [konversiForm, setKonversiForm] = useState({ nama_bahan: '', satuan_beli: 'kg', qty_beli: '', harga_beli: '', satuan_resep: 'gram', qty_resep: '', pax: '', notes: '' })
   const [showKonversiForm, setShowKonversiForm] = useState(false)
   const [editKonversiIdx, setEditKonversiIdx] = useState(null)
 
   const SATUAN = ['gram','kg','ml','liter','pcs','sachet','bungkus','botol','buah','sdm','sdt']
 
+  const fetchKonversi = async () => {
+    setKonversiLoading(true)
+    const { data } = await supabase.from('konversi_bahan').select('*').order('created_at')
+    setKonversiList(data || [])
+    setKonversiLoading(false)
+  }
+
   useEffect(() => {
+    fetchKonversi()
     Promise.all([
       supabase.from('products').select('*').order('name'),
       supabase.from('raw_materials').select('*'),
@@ -72,20 +83,35 @@ export default function KalkulatorHPP() {
     return { hargaPerSatuanBeli, hargaPerResep, hargaPerPax, totalPax }
   }
 
-  const saveKonversi = () => {
+  const saveKonversi = async () => {
     if (!konversiForm.nama_bahan || !konversiForm.qty_beli || !konversiForm.harga_beli) return alert('Nama bahan, qty beli, dan harga wajib diisi!')
-    const list = [...konversiList]
-    if (editKonversiIdx !== null) list[editKonversiIdx] = konversiForm
-    else list.push(konversiForm)
-    setKonversiList(list)
+    const data = {
+      nama_bahan: konversiForm.nama_bahan,
+      satuan_beli: konversiForm.satuan_beli,
+      qty_beli: parseFloat(konversiForm.qty_beli) || 0,
+      harga_beli: parseInt(konversiForm.harga_beli) || 0,
+      satuan_resep: konversiForm.satuan_resep,
+      qty_resep: parseFloat(konversiForm.qty_resep) || 0,
+      pax: parseFloat(konversiForm.pax) || 1,
+      notes: konversiForm.notes || '',
+    }
+    if (editKonversiIdx !== null) {
+      const item = konversiList[editKonversiIdx]
+      await supabase.from('konversi_bahan').update(data).eq('id', item.id)
+    } else {
+      await supabase.from('konversi_bahan').insert(data)
+    }
+    await fetchKonversi()
     setKonversiForm({ nama_bahan: '', satuan_beli: 'kg', qty_beli: '', harga_beli: '', satuan_resep: 'gram', qty_resep: '', pax: '', notes: '' })
     setShowKonversiForm(false)
     setEditKonversiIdx(null)
   }
 
-  const deleteKonversi = (idx) => {
+  const deleteKonversi = async (idx) => {
     if (!window.confirm('Hapus catatan ini?')) return
-    setKonversiList(konversiList.filter((_, i) => i !== idx))
+    const item = konversiList[idx]
+    await supabase.from('konversi_bahan').delete().eq('id', item.id)
+    await fetchKonversi()
   }
 
   return (
@@ -203,21 +229,24 @@ export default function KalkulatorHPP() {
             </div>
           )}
 
-          {konversiList.length === 0 ? (
+          <div className="card mb-2" style={{ padding: '0.75rem 1rem' }}>
+            <input className="form-control" placeholder="🔍 Cari nama bahan..." value={searchKonversi} onChange={e => setSearchKonversi(e.target.value)} />
+          </div>
+          {konversiList.filter(k => !searchKonversi || k.nama_bahan.toLowerCase().includes(searchKonversi.toLowerCase())).length === 0 ? (
             <div className="card empty-state">
               <p>Belum ada catatan konversi.</p>
               <p style={{ fontSize: 12, marginTop: 8 }}>Tambahkan konversi bahan seperti: Beras 1kg = 12 pax ricebowl</p>
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
-              {konversiList.map((k, idx) => {
+              {konversiList.filter(k => !searchKonversi || k.nama_bahan.toLowerCase().includes(searchKonversi.toLowerCase())).map((k, idx) => {
                 const calc = calcKonversi(k)
                 return (
                   <div key={idx} className="card">
                     <div className="flex-between mb-1">
                       <h4 style={{ fontWeight: 700, fontSize: 15 }}>{k.nama_bahan}</h4>
                       <div style={{ display: 'flex', gap: 4 }}>
-                        <button className="btn btn-sm btn-outline" onClick={() => { setKonversiForm(k); setEditKonversiIdx(idx); setShowKonversiForm(true) }}>✏️</button>
+                        <button className="btn btn-sm btn-outline" onClick={() => { setKonversiForm({ nama_bahan: k.nama_bahan, satuan_beli: k.satuan_beli, qty_beli: String(k.qty_beli), harga_beli: String(k.harga_beli), satuan_resep: k.satuan_resep, qty_resep: String(k.qty_resep), pax: String(k.pax), notes: k.notes || '' }); setEditKonversiIdx(idx); setShowKonversiForm(true) }}>✏️</button>
                         <button className="btn btn-sm btn-danger" onClick={() => deleteKonversi(idx)}>🗑</button>
                       </div>
                     </div>
@@ -274,8 +303,11 @@ export default function KalkulatorHPP() {
             </div>
             <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>Overhead meliputi gas, listrik, kemasan, dan biaya operasional lainnya</p>
           </div>
+          <div className="card mb-2" style={{ padding: '0.75rem 1rem' }}>
+            <input className="form-control" placeholder="🔍 Cari nama menu..." value={searchHPP} onChange={e => setSearchHPP(e.target.value)} />
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
-            {loading ? <div className="loading"><div className="spinner" /></div> : products.map(p => {
+            {loading ? <div className="loading"><div className="spinner" /></div> : products.filter(p => !searchHPP || p.name.toLowerCase().includes(searchHPP.toLowerCase())).map(p => {
               const { details, bahanCost, overheadCost, hpp } = calcHPP(p.id)
               const margin = p.price - hpp
               const marginPct = p.price > 0 ? ((margin / p.price) * 100).toFixed(1) : 0
