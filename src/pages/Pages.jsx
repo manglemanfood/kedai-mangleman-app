@@ -127,9 +127,7 @@ export function KalkulatorHPP() {
   const [tab, setTab] = useState('hpp') // 'hpp' | 'konversi'
 
   // Konversi bahan state
-  const [konversiList, setKonversiList] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('hpp_konversi') || '[]') } catch { return [] }
-  })
+  const [konversiList, setKonversiList] = useState([])
   const [konversiForm, setKonversiForm] = useState({
     nama_bahan: '', satuan_beli: 'kg', qty_beli: '', harga_beli: '',
     satuan_resep: 'gram', qty_resep: '', pax: '', notes: ''
@@ -163,7 +161,6 @@ export function KalkulatorHPP() {
     if (editKonversiIdx !== null) list[editKonversiIdx] = konversiForm
     else list.push(konversiForm)
     setKonversiList(list)
-    localStorage.setItem('hpp_konversi', JSON.stringify(list))
     setKonversiForm({ nama_bahan: '', satuan_beli: 'kg', qty_beli: '', harga_beli: '', satuan_resep: 'gram', qty_resep: '', pax: '', notes: '' })
     setShowKonversiForm(false)
     setEditKonversiIdx(null)
@@ -173,7 +170,6 @@ export function KalkulatorHPP() {
     if (!window.confirm('Hapus catatan ini?')) return
     const list = konversiList.filter((_, i) => i !== idx)
     setKonversiList(list)
-    localStorage.setItem('hpp_konversi', JSON.stringify(list))
   }
 
   const editKonversi = (idx) => {
