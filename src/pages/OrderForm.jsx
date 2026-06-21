@@ -21,10 +21,14 @@ const categoryLabel = {
 // Kategori yang pakai dropdown (pilih varian)
 const DROPDOWN_CATEGORIES = ['mie', 'dimsum']
 
-function buildWAMessage(info, cartItems, cart, total, orderNum) {
-  const items = cartItems.map(p =>
+function buildWAMessage(info, cartItems, cart, promoCart, total, orderNum) {
+  const regularItems = cartItems.map(p =>
     `  • ${p.name} x${cart[p.id]} = ${formatHarga(p.price * cart[p.id])}`
-  ).join('\n')
+  )
+  const promoItems = promoCart.map(pc =>
+    `  • 🎁 ${pc.promo.name} x${pc.qty} = ${formatHarga(pc.promo.bundle_price * pc.qty)} (hemat ${formatHarga(pc.promo.diskon * pc.qty)})`
+  )
+  const items = [...promoItems, ...regularItems].join('\n')
   return encodeURIComponent(
 `🍱 *ORDER BARU - Kedai MangLeman*
 ━━━━━━━━━━━━━━━━━━
@@ -49,6 +53,7 @@ export default function OrderForm() {
   const [products, setProducts] = useState([])
   const [promos, setPromos] = useState([])
   const [cart, setCart] = useState({})
+  const [promoCart, setPromoCart] = useState([]) // [{promo, qty}]
   const [info, setInfo] = useState({ name: '', gedung: '', lantai: '', phone: '', catatan: '' })
   const [loading, setLoading] = useState(false)
   const [orderNum, setOrderNum] = useState('')
@@ -90,16 +95,25 @@ export default function OrderForm() {
   })
 
   const cartItems = products.filter(p => cart[p.id])
-  const total = cartItems.reduce((sum, p) => sum + p.price * (cart[p.id] || 0), 0)
-  const totalQty = Object.values(cart).reduce((a, b) => a + b, 0)
+  const regularTotal = cartItems.reduce((sum, p) => sum + p.price * (cart[p.id] || 0), 0)
+  const promoTotal = promoCart.reduce((sum, pc) => sum + pc.promo.bundle_price * pc.qty, 0)
+  const total = regularTotal + promoTotal
+  const totalQty = Object.values(cart).reduce((a, b) => a + b, 0) + promoCart.reduce((s, pc) => s + pc.qty, 0)
 
   const addPromoToCart = (promo) => {
-    const items = typeof promo.items === 'string' ? JSON.parse(promo.items) : promo.items || []
-    items.forEach(item => {
-      const prod = products.find(p => p.name === item.name)
-      if (prod) {
-        for (let i = 0; i < (item.qty || 1); i++) addItem(prod.id)
-      }
+    setPromoCart(prev => {
+      const ex = prev.find(p => p.promo.id === promo.id)
+      if (ex) return prev.map(p => p.promo.id === promo.id ? { ...p, qty: p.qty + 1 } : p)
+      return [...prev, { promo, qty: 1 }]
+    })
+  }
+
+  const removePromoFromCart = (promoId) => {
+    setPromoCart(prev => {
+      const ex = prev.find(p => p.promo.id === promoId)
+      if (!ex) return prev
+      if (ex.qty <= 1) return prev.filter(p => p.promo.id !== promoId)
+      return prev.map(p => p.promo.id === promoId ? { ...p, qty: p.qty - 1 } : p)
     })
   }
 
@@ -133,7 +147,8 @@ export default function OrderForm() {
 
       if (orderErr) throw orderErr
 
-      const items = cartItems.map(p => ({
+      // Regular items
+      const regularOrderItems = cartItems.map(p => ({
         order_id: order.id,
         product_id: p.id,
         product_name: p.name,
@@ -141,7 +156,17 @@ export default function OrderForm() {
         price: p.price,
         subtotal: p.price * cart[p.id],
       }))
-      await supabase.from('order_items').insert(items)
+      // Promo bundle items - simpan sebagai 1 item bundle
+      const promoOrderItems = promoCart.map(pc => ({
+        order_id: order.id,
+        product_id: null,
+        product_name: `🎁 ${pc.promo.name}`,
+        quantity: pc.qty,
+        price: pc.promo.bundle_price,
+        subtotal: pc.promo.bundle_price * pc.qty,
+      }))
+      const allItems = [...regularOrderItems, ...promoOrderItems]
+      if (allItems.length > 0) await supabase.from('order_items').insert(allItems)
 
       if (customerId) {
         const { data: cust } = await supabase.from('customers').select('total_orders,total_spent').eq('id', customerId).single()
@@ -159,7 +184,7 @@ export default function OrderForm() {
 
       const num = order.order_number || order.id.slice(0, 8).toUpperCase()
       setOrderNum(num)
-      setWaUrl(`https://wa.me/${ADMIN_WA}?text=${buildWAMessage(info, cartItems, cart, total, num)}`)
+      setWaUrl(`https://wa.me/${ADMIN_WA}?text=${buildWAMessage(info, cartItems, cart, promoCart, total, num)}`)
       setStep(4)
     } catch (e) {
       setError('Gagal mengirim pesanan. Coba lagi ya!')
@@ -184,6 +209,12 @@ export default function OrderForm() {
         </div>
         <div style={{ background: '#F7F5F0', borderRadius: 10, padding: '12px', marginBottom: 20, textAlign: 'left' }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#888', marginBottom: 8, textTransform: 'uppercase' }}>Ringkasan</div>
+          {promoCart.map((pc, i) => (
+            <div key={`promo-${i}`} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
+              <span>🎁 {pc.promo.name} x{pc.qty}</span>
+              <span style={{ fontWeight: 600, color: '#16A34A' }}>{formatHarga(pc.promo.bundle_price * pc.qty)}</span>
+            </div>
+          ))}
           {cartItems.map(p => (
             <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
               <span>{p.name} x{cart[p.id]}</span>
@@ -199,7 +230,7 @@ export default function OrderForm() {
           <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
           Konfirmasi via WhatsApp
         </a>
-        <button onClick={() => { setStep(1); setCart({}); setInfo({ name: '', gedung: '', lantai: '', phone: '', catatan: '' }); setOrderNum(''); setWaUrl('') }}
+        <button onClick={() => { setStep(1); setCart({}); setPromoCart([]); setInfo({ name: '', gedung: '', lantai: '', phone: '', catatan: '' }); setOrderNum(''); setWaUrl('') }}
           style={{ width: '100%', padding: '10px', background: '#F0EDE8', color: '#666', border: 'none', borderRadius: 10, fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
           Pesan Lagi
         </button>
@@ -318,6 +349,26 @@ export default function OrderForm() {
               </div>
             )}
 
+            {/* Promo yang sudah dipilih */}
+            {promoCart.length > 0 && (
+              <div style={{ background: '#fff', borderRadius: 12, padding: '12px 14px', marginBottom: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#16A34A', marginBottom: 8 }}>✅ Paket Dipilih:</div>
+                {promoCart.map((pc, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>🎁 {pc.promo.name}</div>
+                      <div style={{ fontSize: 12, color: '#16A34A' }}>{formatHarga(pc.promo.bundle_price)} <span style={{ color: '#DC2626', fontSize: 11 }}>hemat {formatHarga(pc.promo.diskon)}</span></div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <button onClick={() => removePromoFromCart(pc.promo.id)} style={{ width: 26, height: 26, borderRadius: '50%', border: '2px solid #E8A838', background: '#fff', color: '#E8A838', fontWeight: 700, cursor: 'pointer' }}>−</button>
+                      <span style={{ fontWeight: 700 }}>{pc.qty}</span>
+                      <button onClick={() => addPromoToCart(pc.promo)} style={{ width: 26, height: 26, borderRadius: '50%', border: 'none', background: '#E8A838', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>+</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Menu list */}
             {Object.entries(grouped).map(([cat, items]) => {
               const isDropdown = DROPDOWN_CATEGORIES.includes(cat)
@@ -411,6 +462,14 @@ export default function OrderForm() {
             </div>
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 12, color: '#888', marginBottom: 8, fontWeight: 600 }}>PESANAN</div>
+              {promoCart.map((pc, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #F0EDE8', fontSize: 14 }}>
+                  <span>🎁 {pc.promo.name} <span style={{ color: '#888' }}>x{pc.qty}</span>
+                    <span style={{ display: 'block', fontSize: 11, color: '#DC2626' }}>hemat {formatHarga(pc.promo.diskon * pc.qty)}</span>
+                  </span>
+                  <span style={{ fontWeight: 600, color: '#16A34A' }}>{formatHarga(pc.promo.bundle_price * pc.qty)}</span>
+                </div>
+              ))}
               {cartItems.map(p => (
                 <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #F0EDE8', fontSize: 14 }}>
                   <span>{p.name} <span style={{ color: '#888' }}>x{cart[p.id]}</span></span>
