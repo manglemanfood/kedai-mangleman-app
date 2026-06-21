@@ -3,7 +3,9 @@ import { supabase } from '../lib/supabase'
 
 const formatRp = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 
-// ==================== MANAJEMEN MENU ====================
+const categories = ['ricebowl','mie','dimsum','minuman','snack']
+const catLabel = { ricebowl:'🍚 Rice Bowl', mie:'🍜 Mie', dimsum:'🥟 Dimsum', minuman:'🥤 Minuman', snack:'🍿 Snack' }
+
 export default function ManajemenMenu() {
   const [products, setProducts] = useState([])
   const [showForm, setShowForm] = useState(false)
@@ -12,9 +14,6 @@ export default function ManajemenMenu() {
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-
-  const categories = ['ricebowl','mie','dimsum','minuman','snack']
-  const catLabel = { ricebowl:'🍚 Rice Bowl', mie:'🍜 Mie', dimsum:'🥟 Dimsum', minuman:'🥤 Minuman', snack:'🍿 Snack' }
 
   const fetchProducts = async () => {
     setLoading(true)
@@ -25,8 +24,17 @@ export default function ManajemenMenu() {
 
   useEffect(() => { fetchProducts() }, [])
 
-  const openAdd = () => { setEditItem(null); setForm({ name: '', category: 'ricebowl', price: '', hpp: '', is_available: true }); setShowForm(true) }
-  const openEdit = (p) => { setEditItem(p); setForm({ name: p.name, category: p.category, price: p.price, hpp: p.hpp || '', is_available: p.is_available }); setShowForm(true) }
+  const openAdd = () => {
+    setEditItem(null)
+    setForm({ name: '', category: 'ricebowl', price: '', hpp: '', is_available: true })
+    setShowForm(true)
+  }
+
+  const openEdit = (p) => {
+    setEditItem(p)
+    setForm({ name: p.name, category: p.category, price: p.price, hpp: p.hpp || '', is_available: p.is_available })
+    setShowForm(true)
+  }
 
   const save = async () => {
     if (!form.name || !form.price) return alert('Nama dan harga wajib diisi!')
@@ -45,17 +53,27 @@ export default function ManajemenMenu() {
     fetchProducts()
   }
 
-  const grouped = categories.reduce((acc, cat) => {
-    acc[cat] = products.filter(p => p.category === cat)
-    return acc
-  }, {})
-
   return (
     <div>
       <div className="page-header flex-between">
-        <div><h1>Manajemen Menu 🍱</h1><p>Kelola daftar menu yang tampil di form order customer</p></div>
+        <div>
+          <h1>Manajemen Menu 🍱</h1>
+          <p>Kelola daftar menu yang tampil di form order customer</p>
+        </div>
         <button className="btn btn-primary" onClick={openAdd}>+ Tambah Menu</button>
       </div>
+
+      {/* Search */}
+      <div className="card mb-2" style={{ padding: '0.75rem 1rem' }}>
+        <input
+          className="form-control"
+          placeholder="🔍 Cari nama menu..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+      </div>
+
+      {/* Form Modal */}
       {showForm && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div className="card" style={{ width: '100%', maxWidth: 420 }}>
@@ -96,39 +114,65 @@ export default function ManajemenMenu() {
           </div>
         </div>
       )}
-      <div className="card mb-2" style={{ padding: '0.75rem 1rem' }}>
-        <input className="form-control" placeholder="🔍 Cari nama menu..." value={search} onChange={e => setSearch(e.target.value)} />
-      </div>
-      {loading ? <div className="loading"><div className="spinner" /></div> : (
-        Object.entries(grouped).map(([cat, items]) => items.length === 0 ? null : (
-          <div key={cat} className="card mb-2" style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{ padding: '12px 16px', background: 'var(--bg)', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 14 }}>{catLabel[cat]}</div>
-            <table className="table">
-              <thead><tr><th>Nama Menu</th><th>Harga Jual</th><th>HPP</th><th>Margin</th><th>Status</th><th>Aksi</th></tr></thead>
-              <tbody>
-                {filtered.map(p => {
-                  const margin = p.price - (p.hpp || 0)
-                  const marginPct = p.price > 0 && p.hpp > 0 ? ((margin / p.price) * 100).toFixed(0) : '-'
-                  return (
-                    <tr key={p.id}>
-                      <td style={{ fontWeight: 600 }}>{p.name}</td>
-                      <td style={{ fontWeight: 600 }}>{formatRp(p.price)}</td>
-                      <td style={{ fontSize: 13, color: 'var(--text-muted)' }}>{p.hpp ? formatRp(p.hpp) : '-'}</td>
-                      <td style={{ fontSize: 13 }}>{marginPct !== '-' ? <span style={{ color: parseFloat(marginPct) >= 20 ? 'var(--success)' : 'var(--warning)', fontWeight: 600 }}>{marginPct}%</span> : '-'}</td>
-                      <td><span className={`badge ${p.is_available ? 'badge-success' : 'badge-gray'}`}>{p.is_available ? '✅ Aktif' : '❌ Nonaktif'}</span></td>
-                      <td>
-                        <div style={{ display: 'flex', gap: 4 }}>
-                          <button className="btn btn-sm btn-outline" onClick={() => openEdit(p)}>✏️</button>
-                          <button className="btn btn-sm btn-danger" onClick={() => remove(p.id)}>🗑</button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        ))})
+
+      {loading ? (
+        <div className="loading"><div className="spinner" /></div>
+      ) : (
+        categories.map(cat => {
+          const items = products.filter(p => p.category === cat)
+          const filtered = items.filter(p => !search || p.name.toLowerCase().includes(search.toLowerCase()))
+          if (filtered.length === 0) return null
+          return (
+            <div key={cat} className="card mb-2" style={{ padding: 0, overflow: 'hidden' }}>
+              <div style={{ padding: '12px 16px', background: 'var(--bg)', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 14 }}>
+                {catLabel[cat]}
+              </div>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Nama Menu</th>
+                    <th>Harga Jual</th>
+                    <th>HPP</th>
+                    <th>Margin</th>
+                    <th>Status</th>
+                    <th>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map(p => {
+                    const margin = p.price - (p.hpp || 0)
+                    const marginPct = p.price > 0 && p.hpp > 0 ? ((margin / p.price) * 100).toFixed(0) : '-'
+                    return (
+                      <tr key={p.id}>
+                        <td style={{ fontWeight: 600 }}>{p.name}</td>
+                        <td style={{ fontWeight: 600 }}>{formatRp(p.price)}</td>
+                        <td style={{ fontSize: 13, color: 'var(--text-muted)' }}>{p.hpp ? formatRp(p.hpp) : '-'}</td>
+                        <td style={{ fontSize: 13 }}>
+                          {marginPct !== '-' ? (
+                            <span style={{ color: parseFloat(marginPct) >= 20 ? 'var(--success)' : 'var(--warning)', fontWeight: 600 }}>
+                              {marginPct}%
+                            </span>
+                          ) : '-'}
+                        </td>
+                        <td>
+                          <span className={`badge ${p.is_available ? 'badge-success' : 'badge-gray'}`}>
+                            {p.is_available ? '✅ Aktif' : '❌ Nonaktif'}
+                          </span>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            <button className="btn btn-sm btn-outline" onClick={() => openEdit(p)}>✏️</button>
+                            <button className="btn btn-sm btn-danger" onClick={() => remove(p.id)}>🗑</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )
+        })
       )}
     </div>
   )
