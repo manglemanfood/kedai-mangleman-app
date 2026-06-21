@@ -120,8 +120,6 @@ export default function Bundling() {
   const [confirmBundle, setConfirmBundle] = useState(null)
   const [editSaved, setEditSaved] = useState(null)
   const [editSavedForm, setEditSavedForm] = useState({})
-  const [editSaved, setEditSaved] = useState(null)
-  const [editSavedForm, setEditSavedForm] = useState({}) // bundle yang mau disimpan
   const [confirmForm, setConfirmForm] = useState({ periode: 'harian', diskon: 0, bundlePrice: 0, notes: '' })
   const [editBundle, setEditBundle] = useState(null)
   const [saving, setSaving] = useState(false)
