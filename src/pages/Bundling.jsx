@@ -117,6 +117,8 @@ export default function Bundling() {
   const [tab, setTab] = useState('rekomendasi')
   const [loading, setLoading] = useState(true)
   const [showCustomForm, setShowCustomForm] = useState(false)
+  const [confirmBundle, setConfirmBundle] = useState(null) // bundle yang mau disimpan
+  const [confirmForm, setConfirmForm] = useState({ periode: 'harian', diskon: 0, bundlePrice: 0, notes: '' })
   const [editBundle, setEditBundle] = useState(null)
   const [saving, setSaving] = useState(false)
   const [filterPeriode, setFilterPeriode] = useState('Semua')
@@ -145,19 +147,36 @@ export default function Bundling() {
     load()
   }, [])
 
+  const openConfirm = (bundle) => {
+    setConfirmBundle(bundle)
+    setConfirmForm({
+      periode: 'harian',
+      diskon: bundle.diskon,
+      bundlePrice: bundle.bundlePrice,
+      notes: '',
+    })
+  }
+
   const saveBundle = async (bundle, periode = 'harian') => {
     setSaving(true)
+    // Kalau dari popup konfirmasi, pakai confirmForm
+    const useConfirm = confirmBundle && bundle.id === confirmBundle.id
+    const finalDiskon = useConfirm ? confirmForm.diskon : bundle.diskon
+    const finalBundlePrice = useConfirm ? confirmForm.bundlePrice : bundle.bundlePrice
+    const finalPeriode = useConfirm ? confirmForm.periode : periode
+    const finalNotes = useConfirm ? confirmForm.notes : (bundle.notes || '')
+
     const data = {
       name: bundle.name,
       type: bundle.type,
       tag: bundle.tag || '📦',
       strategy: bundle.strategy,
-      periode,
+      periode: finalPeriode,
       items: JSON.stringify(bundle.items),
       normal_price: bundle.normalPrice,
-      diskon: bundle.diskon,
-      bundle_price: bundle.bundlePrice,
-      notes: bundle.notes || '',
+      diskon: finalDiskon,
+      bundle_price: finalBundlePrice,
+      notes: finalNotes,
       is_active: true,
     }
     if (editBundle) {
@@ -170,6 +189,7 @@ export default function Bundling() {
     setSaving(false)
     setShowCustomForm(false)
     setEditBundle(null)
+    setConfirmBundle(null)
     setTab('tersimpan')
   }
 
@@ -316,15 +336,11 @@ export default function Bundling() {
                       </div>
 
                       {/* Aksi */}
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        {['harian','pekanan','bulanan'].map(p => (
-                          <button key={p} onClick={() => saveBundle(s, p)}
-                            className="btn btn-sm btn-outline" style={{ flex: 1, fontSize: 11 }}
-                            disabled={saving}>
-                            {p === 'harian' ? '📅' : p === 'pekanan' ? '📆' : '🗓'} {p}
-                          </button>
-                        ))}
-                      </div>
+                      <button onClick={() => openConfirm(s)}
+                        className="btn btn-primary btn-block"
+                        style={{ marginTop: 4, fontSize: 13, fontWeight: 700 }}>
+                        💾 Simpan ke Plan
+                      </button>
                     </div>
                   )
                 })}
@@ -524,6 +540,94 @@ export default function Bundling() {
             </div>
           )}
         </>
+      )}
+
+      {/* Confirm Save Modal */}
+      {confirmBundle && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div className="card" style={{ width: '100%', maxWidth: 460 }}>
+            <div className="flex-between mb-2">
+              <h3 style={{ fontWeight: 700 }}>💾 Simpan Paket ke Plan</h3>
+              <button onClick={() => setConfirmBundle(null)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer' }}>✕</button>
+            </div>
+
+            {/* Preview paket */}
+            <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px', marginBottom: 16 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>{confirmBundle.tag} {confirmBundle.name}</div>
+              {confirmBundle.items.map((item, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-muted)', marginBottom: 2 }}>
+                  <span>{item.qty > 1 ? `${item.qty}x ` : ''}{item.name}</span>
+                  <span>{formatRp(item.price * item.qty)}</span>
+                </div>
+              ))}
+              <div style={{ borderTop: '1px solid var(--border)', marginTop: 8, paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)' }}>
+                <span>Harga Normal</span>
+                <span style={{ textDecoration: 'line-through' }}>{formatRp(confirmBundle.normalPrice)}</span>
+              </div>
+            </div>
+
+            {/* Edit diskon */}
+            <div className="form-group">
+              <label className="form-label">💰 Diskon (Rp) — bisa disesuaikan</label>
+              <input className="form-control" type="number"
+                value={confirmForm.diskon}
+                onChange={e => {
+                  const d = parseInt(e.target.value) || 0
+                  setConfirmForm(f => ({ ...f, diskon: d, bundlePrice: confirmBundle.normalPrice - d }))
+                }} />
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>
+                Diskon saat ini: {confirmBundle.normalPrice > 0 ? Math.round((confirmForm.diskon / confirmBundle.normalPrice) * 100) : 0}% dari harga normal
+              </p>
+            </div>
+
+            {/* Harga bundle hasil */}
+            <div style={{ background: '#F0FDF4', borderRadius: 10, padding: '12px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: 12, color: '#888', marginBottom: 2 }}>Harga Bundle</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: '#16A34A' }}>{formatRp(confirmForm.bundlePrice)}</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 12, color: '#DC2626', fontWeight: 600 }}>Hemat {formatRp(confirmForm.diskon)}</div>
+                <div style={{ fontSize: 11, color: '#888' }}>dari {formatRp(confirmBundle.normalPrice)}</div>
+              </div>
+            </div>
+
+            {/* Periode */}
+            <div className="form-group">
+              <label className="form-label">📅 Masukkan ke Plan</label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                {[
+                  { key: 'harian', icon: '📅', label: 'Harian', desc: 'Promo setiap hari' },
+                  { key: 'pekanan', icon: '📆', label: 'Pekanan', desc: 'Promo per minggu' },
+                  { key: 'bulanan', icon: '🗓', label: 'Bulanan', desc: 'Promo per bulan' },
+                ].map(p => (
+                  <button key={p.key} onClick={() => setConfirmForm(f => ({ ...f, periode: p.key }))}
+                    style={{ padding: '10px 8px', borderRadius: 10, border: `2px solid ${confirmForm.periode === p.key ? '#1A2E0A' : 'var(--border)'}`, background: confirmForm.periode === p.key ? '#1A2E0A' : '#fff', color: confirmForm.periode === p.key ? '#fff' : 'var(--text)', cursor: 'pointer', textAlign: 'center' }}>
+                    <div style={{ fontSize: 20 }}>{p.icon}</div>
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>{p.label}</div>
+                    <div style={{ fontSize: 10, opacity: 0.7 }}>{p.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Catatan */}
+            <div className="form-group">
+              <label className="form-label">📝 Catatan (opsional)</label>
+              <input className="form-control" placeholder="Cth: Berlaku jam 11-14, khusus gedung A..."
+                value={confirmForm.notes}
+                onChange={e => setConfirmForm(f => ({ ...f, notes: e.target.value }))} />
+            </div>
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-outline" style={{ flex: 1 }} onClick={() => setConfirmBundle(null)}>Batal</button>
+              <button className="btn btn-primary" style={{ flex: 2 }} disabled={saving}
+                onClick={() => saveBundle(confirmBundle, confirmForm.periode)}>
+                {saving ? '⏳ Menyimpan...' : `💾 Simpan ke Plan ${confirmForm.periode.charAt(0).toUpperCase() + confirmForm.periode.slice(1)}`}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Custom Bundle Modal */}
