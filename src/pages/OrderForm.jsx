@@ -12,7 +12,7 @@ const categoryLabel = {
 }
 
 // ⚠️ GANTI dengan nomor WA admin (format: 628xxxxxxxxxx)
-const ADMIN_WA = '628179075977'
+const ADMIN_WA = '6281234567890'
 
 function buildWAMessage(info, cartItems, cart, total, orderNum) {
   const items = cartItems.map(p => `  • ${p.name} x${cart[p.id]} = ${formatRp(p.price * cart[p.id])}`).join('\n')
@@ -32,7 +32,7 @@ ${items}
 ━━━━━━━━━━━━━━━━━━
 💰 *TOTAL: ${formatRp(total)}*
 ━━━━━━━━━━━━━━━━━━
-Mohon konfirmasi pesanan saya ya kak 🙏`)
+Mohon konfirmasi pesanan saya ya mangleman 🙏`)
 }
 
 export default function OrderForm() {
