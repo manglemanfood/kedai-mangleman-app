@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
 const formatRp = (n) => {
@@ -22,6 +22,13 @@ const profitColor = (n) => n >= 0 ? '#16A34A' : '#DC2626'
 const profitBg   = (n) => n >= 0 ? '#F0FDF4' : '#FEF2F2'
 const profitIcon = (n) => n >= 0 ? '📈' : '📉'
 
+const TAB_LABELS = {
+  labarugi: 'Laporan Laba Rugi',
+  neraca: 'Neraca Sederhana',
+  aruskas: 'Laporan Arus Kas',
+  catatan: 'Catatan atas Laporan Keuangan (CaLK)',
+}
+
 export default function LaporanLabaRugi() {
   const [activeTab, setActiveTab] = useState('labarugi')
   const [periodMode, setPeriodMode] = useState('bulan')
@@ -29,6 +36,7 @@ export default function LaporanLabaRugi() {
   const [dateTo, setDateTo] = useState(thisMonth().to)
   const [selectedMonth, setSelectedMonth] = useState(today().slice(0,7))
   const [loading, setLoading] = useState(false)
+  const printRef = useRef(null)
 
   // Data
   const [revenue, setRevenue] = useState(0)
@@ -134,14 +142,79 @@ export default function LaporanLabaRugi() {
   const years = [2025, 2026, 2027]
 
   // ── UI ──────────────────────────────────────────────────────
+  const handlePrint = () => {
+    const el = printRef.current
+    if (!el) return
+    const tabLabel = TAB_LABELS[activeTab] || 'Laporan Keuangan'
+    const win = window.open('', '_blank')
+    win.document.write(`
+      <!DOCTYPE html>
+      <html lang="id">
+      <head>
+        <meta charset="UTF-8">
+        <title>${tabLabel} - Kedai MangLeman - ${periodLabel}</title>
+        <style>
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: Arial, sans-serif; font-size: 13px; color: #1A1A1A; padding: 20px; }
+          .print-header { text-align: center; border-bottom: 2px solid #1A2E0A; padding-bottom: 12px; margin-bottom: 20px; }
+          .print-header h1 { font-size: 20px; color: #1A2E0A; margin-bottom: 4px; }
+          .print-header h2 { font-size: 15px; color: #555; font-weight: normal; margin-bottom: 2px; }
+          .print-header p { font-size: 12px; color: #888; }
+          .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+          .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+          .card { border: 1px solid #E5E5E5; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+          .kpi { background: #F8F8F8; border-radius: 8px; padding: 10px; text-align: center; }
+          .kpi-label { font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 4px; }
+          .kpi-value { font-size: 16px; font-weight: bold; }
+          .section-title { font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; margin-top: 12px; }
+          .row { display: flex; justify-content: space-between; padding: 4px 8px; font-size: 13px; }
+          .row.total { font-weight: bold; border-top: 1px solid #E5E5E5; margin-top: 4px; padding-top: 6px; }
+          .row.highlight { background: #F0FDF4; border-radius: 6px; font-size: 15px; font-weight: bold; padding: 8px; margin: 8px 0; }
+          .row.highlight.loss { background: #FEF2F2; }
+          table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+          th { background: #F0F0F0; padding: 6px 8px; text-align: left; font-size: 11px; }
+          td { padding: 5px 8px; border-bottom: 1px solid #F0F0F0; }
+          .footer { margin-top: 30px; border-top: 1px solid #E5E5E5; padding-top: 10px; font-size: 11px; color: #888; text-align: center; }
+          @media print {
+            body { padding: 10px; }
+            @page { margin: 1cm; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="print-header">
+          <h1>🍱 Kedai MangLeman</h1>
+          <h2>${tabLabel}</h2>
+          <p>Periode: ${periodLabel}</p>
+          <p>Dicetak: ${new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+        </div>
+        ${el.innerHTML}
+        <div class="footer">
+          Laporan ini digenerate otomatis oleh Sistem Kedai MangLeman &bull; Rahasia &amp; Konfidensial
+        </div>
+      </body>
+      </html>
+    `)
+    win.document.close()
+    setTimeout(() => { win.print() }, 500)
+  }
+
   return (
     <div>
       {/* Header */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1A1A1A', marginBottom: 2 }}>
-          📊 Laporan Keuangan
-        </h1>
-        <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>Kedai MangLeman · {periodLabel}</p>
+      <div style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: '#1A1A1A', marginBottom: 2 }}>
+            📊 Laporan Keuangan
+          </h1>
+          <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>Kedai MangLeman · {periodLabel}</p>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={handlePrint}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 18px', background: '#1A2E0A', color: '#fff', border: 'none', borderRadius: 9, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+            🖨️ Print / Download PDF
+          </button>
+        </div>
       </div>
 
       {/* Period picker */}
@@ -186,6 +259,9 @@ export default function LaporanLabaRugi() {
           <button onClick={fetchData} className="btn btn-outline btn-sm" style={{ marginLeft: 'auto' }}>🔄 Refresh</button>
         </div>
       </div>
+
+      {/* Print area */}
+      <div ref={printRef}>
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, background: 'var(--bg)', padding: 4, borderRadius: 10, marginBottom: '1.25rem', flexWrap: 'wrap' }}>
@@ -553,6 +629,8 @@ export default function LaporanLabaRugi() {
           )}
         </>
       )}
+
+      </div>{/* end printRef */}
     </div>
   )
 }
