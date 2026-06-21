@@ -3,7 +3,15 @@ import { supabase } from '../lib/supabase'
 
 const formatRp = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 
-// ==================== KALKULATOR HPP ====================
+const BAHAN_KATEGORI = [
+  { key: 'utama', label: '🥩 Produk Utama', color: '#2D5016', bg: '#E8F5E0' },
+  { key: 'bumbu', label: '🧄 Bumbu & Rempah', color: '#C8881A', bg: '#FFF3D6' },
+  { key: 'kemasan', label: '📦 Kemasan', color: '#0077B6', bg: '#E0F4FF' },
+  { key: 'lainnya', label: '📝 Lainnya', color: '#555', bg: '#F0F0F0' },
+]
+
+const SATUAN = ['gram', 'kg', 'ml', 'liter', 'pcs', 'sdm', 'sdt', 'sachet', 'buah', 'siung', 'lembar', 'bungkus']
+
 export default function KalkulatorHPP() {
   const [products, setProducts] = useState([])
   const [materials, setMaterials] = useState({})
@@ -13,13 +21,14 @@ export default function KalkulatorHPP() {
   const [tab, setTab] = useState('hpp')
   const [konversiList, setKonversiList] = useState([])
   const [konversiLoading, setKonversiLoading] = useState(false)
-  const [searchHPP, setSearchHPP] = useState('')
-  const [searchKonversi, setSearchKonversi] = useState('')
-  const [konversiForm, setKonversiForm] = useState({ nama_bahan: '', satuan_beli: 'kg', qty_beli: '', harga_beli: '', satuan_resep: 'gram', qty_resep: '', pax: '', notes: '' })
+  const [konversiForm, setKonversiForm] = useState({
+    nama_bahan: '', satuan_beli: 'kg', qty_beli: '', harga_beli: '',
+    satuan_resep: 'gram', qty_resep: '', pax: '', notes: ''
+  })
   const [showKonversiForm, setShowKonversiForm] = useState(false)
   const [editKonversiIdx, setEditKonversiIdx] = useState(null)
-
-  const SATUAN = ['gram','kg','ml','liter','pcs','sachet','bungkus','botol','buah','sdm','sdt']
+  const [searchHPP, setSearchHPP] = useState('')
+  const [searchKonversi, setSearchKonversi] = useState('')
 
   const fetchKonversi = async () => {
     setKonversiLoading(true)
@@ -49,22 +58,33 @@ export default function KalkulatorHPP() {
     })
   }, [])
 
+  // Sort bahan: utama → bumbu → kemasan → lainnya
+  const sortRecipes = (recs) => {
+    const order = { utama: 0, bumbu: 1, kemasan: 2, lainnya: 3 }
+    return [...recs].sort((a, b) => (order[a.bahan_kategori || 'lainnya'] ?? 3) - (order[b.bahan_kategori || 'lainnya'] ?? 3))
+  }
+
   const calcHPP = (productId) => {
-    const recs = recipes[productId] || []
+    const recs = sortRecipes(recipes[productId] || [])
     let total = 0
     const details = recs.map(r => {
       const mat = materials[r.raw_material_id]
-      if (!mat) return { name: r.material_name, cost: 0, qty: r.qty_used, unit: r.unit }
+      if (!mat) return { name: r.material_name, cost: 0, qty: r.qty_used, unit: r.unit, kat: r.bahan_kategori || 'lainnya' }
       let qty = r.qty_used
       if (r.unit === 'gram' && mat.unit === 'kg') qty = r.qty_used / 1000
       else if (r.unit === 'ml' && mat.unit === 'liter') qty = r.qty_used / 1000
       const cost = qty * mat.last_price
       total += cost
-      return { name: r.material_name, cost, qty: r.qty_used, unit: r.unit }
+      return { name: r.material_name, cost, qty: r.qty_used, unit: r.unit, kat: r.bahan_kategori || 'lainnya' }
     })
     const overheadCost = total * (overhead / 100)
     const hpp = total + overheadCost
     return { details, bahanCost: total, overheadCost, hpp }
+  }
+
+  // Auto-update HPP ke tabel products
+  const syncHPPToMenu = async (productId, hpp) => {
+    await supabase.from('products').update({ hpp: Math.round(hpp) }).eq('id', productId)
   }
 
   const calcKonversi = (k) => {
@@ -76,7 +96,6 @@ export default function KalkulatorHPP() {
     let qtyResepNorm = qtyResep
     if (k.satuan_beli === 'kg' && k.satuan_resep === 'gram') qtyResepNorm = qtyResep / 1000
     else if (k.satuan_beli === 'liter' && k.satuan_resep === 'ml') qtyResepNorm = qtyResep / 1000
-    else if (k.satuan_beli === 'gram' && k.satuan_resep === 'kg') qtyResepNorm = qtyResep * 1000
     const hargaPerResep = hargaPerSatuanBeli * qtyResepNorm
     const hargaPerPax = pax > 0 ? hargaPerResep / pax : 0
     const totalPax = qtyResepNorm > 0 ? Math.floor(qtyBeli / qtyResepNorm) * pax : 0
@@ -109,10 +128,12 @@ export default function KalkulatorHPP() {
 
   const deleteKonversi = async (idx) => {
     if (!window.confirm('Hapus catatan ini?')) return
-    const item = konversiList[idx]
-    await supabase.from('konversi_bahan').delete().eq('id', item.id)
+    await supabase.from('konversi_bahan').delete().eq('id', konversiList[idx].id)
     await fetchKonversi()
   }
+
+  const filteredProducts = products.filter(p => !searchHPP || p.name.toLowerCase().includes(searchHPP.toLowerCase()))
+  const filteredKonversi = konversiList.filter(k => !searchKonversi || k.nama_bahan.toLowerCase().includes(searchKonversi.toLowerCase()))
 
   return (
     <div>
@@ -126,12 +147,106 @@ export default function KalkulatorHPP() {
         <button className={`tab ${tab === 'konversi' ? 'active' : ''}`} onClick={() => setTab('konversi')}>📐 Konversi Bahan ({konversiList.length})</button>
       </div>
 
+      {/* TAB HPP */}
+      {tab === 'hpp' && (
+        <div>
+          <div className="card mb-2" style={{ padding: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+              <label style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap' }}>Overhead:</label>
+              <input type="range" min="0" max="50" value={overhead} onChange={e => setOverhead(parseInt(e.target.value))} style={{ flex: 1 }} />
+              <span style={{ fontWeight: 700, minWidth: 40 }}>{overhead}%</span>
+            </div>
+            <input className="form-control" placeholder="🔍 Cari nama menu..." value={searchHPP} onChange={e => setSearchHPP(e.target.value)} />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
+            {loading ? <div className="loading"><div className="spinner" /></div> : filteredProducts.map(p => {
+              const { details, bahanCost, overheadCost, hpp } = calcHPP(p.id)
+              const margin = p.price - hpp
+              const marginPct = p.price > 0 ? ((margin / p.price) * 100).toFixed(1) : 0
+
+              // Auto sync HPP ke products table jika ada resep
+              if (details.length > 0 && Math.round(hpp) !== p.hpp) {
+                syncHPPToMenu(p.id, hpp)
+              }
+
+              // Group by kategori
+              const grouped = {}
+              details.forEach(d => {
+                const kat = d.kat || 'lainnya'
+                if (!grouped[kat]) grouped[kat] = []
+                grouped[kat].push(d)
+              })
+
+              return (
+                <div key={p.id} className="card">
+                  <div className="flex-between mb-1">
+                    <h4 style={{ fontWeight: 700, fontSize: 14 }}>{p.name}</h4>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Jual: {formatRp(p.price)}</span>
+                  </div>
+                  {details.length === 0 ? (
+                    <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Belum ada resep.</p>
+                  ) : (
+                    <div>
+                      {/* Tampilkan per kategori */}
+                      {BAHAN_KATEGORI.map(kat => {
+                        const items = grouped[kat.key]
+                        if (!items || items.length === 0) return null
+                        return (
+                          <div key={kat.key} style={{ marginBottom: 8 }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: kat.color, background: kat.bg, padding: '2px 8px', borderRadius: 4, display: 'inline-block', marginBottom: 4 }}>
+                              {kat.label}
+                            </div>
+                            {items.map((d, i) => (
+                              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '2px 0', color: 'var(--text-muted)' }}>
+                                <span>{d.name} ({d.qty} {d.unit})</span>
+                                <span>{formatRp(d.cost)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      })}
+                      <div style={{ borderTop: '1px solid var(--border)', marginTop: 8, paddingTop: 8 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 2 }}>
+                          <span>Bahan baku</span><span>{formatRp(bahanCost)}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 6, color: 'var(--text-muted)' }}>
+                          <span>Overhead ({overhead}%)</span><span>{formatRp(overheadCost)}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 14, marginBottom: 2 }}>
+                          <span>HPP</span><span style={{ color: '#C0392B' }}>{formatRp(hpp)}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 13 }}>
+                          <span>Margin</span>
+                          <span style={{ color: margin >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                            {formatRp(margin)} ({marginPct}%)
+                          </span>
+                        </div>
+                        <div style={{ marginTop: 6, fontSize: 11, color: '#2D5016', background: '#E8F5E0', borderRadius: 4, padding: '3px 8px' }}>
+                          ✅ HPP otomatis tersinkron ke Manajemen Menu
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* TAB KONVERSI */}
       {tab === 'konversi' && (
         <div>
           <div className="flex-between mb-2">
-            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Catat konversi satuan beli → satuan resep → jumlah pax</p>
-            <button className="btn btn-primary" onClick={() => { setEditKonversiIdx(null); setKonversiForm({ nama_bahan: '', satuan_beli: 'kg', qty_beli: '', harga_beli: '', satuan_resep: 'gram', qty_resep: '', pax: '', notes: '' }); setShowKonversiForm(true) }}>+ Tambah Catatan</button>
+            <div className="card" style={{ flex: 1, padding: '0.75rem 1rem', marginRight: 8 }}>
+              <input className="form-control" placeholder="🔍 Cari nama bahan..." value={searchKonversi} onChange={e => setSearchKonversi(e.target.value)} />
+            </div>
+            <button className="btn btn-primary" onClick={() => { setEditKonversiIdx(null); setKonversiForm({ nama_bahan: '', satuan_beli: 'kg', qty_beli: '', harga_beli: '', satuan_resep: 'gram', qty_resep: '', pax: '', notes: '' }); setShowKonversiForm(true) }}>
+              + Tambah
+            </button>
           </div>
+
           <div className="alert alert-info mb-2" style={{ fontSize: 12 }}>
             💡 <strong>Contoh:</strong> Beras 1 kg = Rp 13.000 → pakai 80 gram/porsi → 1 kg untuk 12 pax → HPP beras/pax = Rp 1.083
           </div>
@@ -145,17 +260,17 @@ export default function KalkulatorHPP() {
                 </div>
                 <div className="form-group">
                   <label className="form-label">Nama Bahan *</label>
-                  <input className="form-control" placeholder="Contoh: Beras, Ayam fillet, Juice jeruk" value={konversiForm.nama_bahan} onChange={e => setKonversiForm(f => ({ ...f, nama_bahan: e.target.value }))} />
+                  <input className="form-control" placeholder="Cth: Beras, Ayam fillet" value={konversiForm.nama_bahan} onChange={e => setKonversiForm(f => ({ ...f, nama_bahan: e.target.value }))} />
                 </div>
                 <div style={{ background: '#E8F5E0', borderRadius: 10, padding: '12px', marginBottom: 12 }}>
-                  <div style={{ fontWeight: 600, fontSize: 12, color: '#2D5016', marginBottom: 8 }}>📦 SATUAN BELI (dari supplier)</div>
+                  <div style={{ fontWeight: 600, fontSize: 12, color: '#2D5016', marginBottom: 8 }}>📦 SATUAN BELI</div>
                   <div className="grid-2">
                     <div className="form-group" style={{ margin: 0 }}>
                       <label className="form-label">Qty Beli *</label>
-                      <input className="form-control" type="number" step="0.001" placeholder="1" value={konversiForm.qty_beli} onChange={e => setKonversiForm(f => ({ ...f, qty_beli: e.target.value }))} />
+                      <input className="form-control" type="number" step="0.001" value={konversiForm.qty_beli} onChange={e => setKonversiForm(f => ({ ...f, qty_beli: e.target.value }))} />
                     </div>
                     <div className="form-group" style={{ margin: 0 }}>
-                      <label className="form-label">Satuan Beli</label>
+                      <label className="form-label">Satuan</label>
                       <select className="form-control" value={konversiForm.satuan_beli} onChange={e => setKonversiForm(f => ({ ...f, satuan_beli: e.target.value }))}>
                         {SATUAN.map(s => <option key={s}>{s}</option>)}
                       </select>
@@ -163,59 +278,49 @@ export default function KalkulatorHPP() {
                   </div>
                   <div className="form-group" style={{ marginTop: 8, marginBottom: 0 }}>
                     <label className="form-label">Harga Beli (Rp) *</label>
-                    <input className="form-control" type="number" placeholder="13000" value={konversiForm.harga_beli} onChange={e => setKonversiForm(f => ({ ...f, harga_beli: e.target.value }))} />
+                    <input className="form-control" type="number" value={konversiForm.harga_beli} onChange={e => setKonversiForm(f => ({ ...f, harga_beli: e.target.value }))} />
                   </div>
                 </div>
                 <div style={{ background: '#E0F4FF', borderRadius: 10, padding: '12px', marginBottom: 12 }}>
                   <div style={{ fontWeight: 600, fontSize: 12, color: '#0077B6', marginBottom: 8 }}>🍳 PEMAKAIAN PER RESEP</div>
                   <div className="grid-2">
                     <div className="form-group" style={{ margin: 0 }}>
-                      <label className="form-label">Qty Pakai per Resep</label>
-                      <input className="form-control" type="number" step="0.001" placeholder="80" value={konversiForm.qty_resep} onChange={e => setKonversiForm(f => ({ ...f, qty_resep: e.target.value }))} />
+                      <label className="form-label">Qty Pakai</label>
+                      <input className="form-control" type="number" step="0.001" value={konversiForm.qty_resep} onChange={e => setKonversiForm(f => ({ ...f, qty_resep: e.target.value }))} />
                     </div>
                     <div className="form-group" style={{ margin: 0 }}>
-                      <label className="form-label">Satuan Resep</label>
+                      <label className="form-label">Satuan</label>
                       <select className="form-control" value={konversiForm.satuan_resep} onChange={e => setKonversiForm(f => ({ ...f, satuan_resep: e.target.value }))}>
                         {SATUAN.map(s => <option key={s}>{s}</option>)}
                       </select>
                     </div>
                   </div>
                   <div className="form-group" style={{ marginTop: 8, marginBottom: 0 }}>
-                    <label className="form-label">Hasil: berapa pax/porsi per resep?</label>
-                    <input className="form-control" type="number" placeholder="1" value={konversiForm.pax} onChange={e => setKonversiForm(f => ({ ...f, pax: e.target.value }))} />
+                    <label className="form-label">Hasil berapa pax?</label>
+                    <input className="form-control" type="number" value={konversiForm.pax} onChange={e => setKonversiForm(f => ({ ...f, pax: e.target.value }))} />
                   </div>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Notes / Keterangan</label>
-                  <textarea className="form-control" rows={2} placeholder="Contoh: Ayam fillet → marinasi 2 jam → dipotong 5 pcs per resep" value={konversiForm.notes} onChange={e => setKonversiForm(f => ({ ...f, notes: e.target.value }))} />
+                  <label className="form-label">Notes</label>
+                  <textarea className="form-control" rows={2} value={konversiForm.notes} onChange={e => setKonversiForm(f => ({ ...f, notes: e.target.value }))} />
                 </div>
                 {konversiForm.qty_beli && konversiForm.harga_beli && konversiForm.qty_resep && (
                   <div style={{ background: '#FFF3D6', borderRadius: 10, padding: '12px', marginBottom: 12 }}>
-                    <div style={{ fontWeight: 600, fontSize: 12, color: '#C8881A', marginBottom: 8 }}>🧮 PREVIEW KALKULASI</div>
+                    <div style={{ fontWeight: 600, fontSize: 12, color: '#C8881A', marginBottom: 8 }}>🧮 PREVIEW</div>
                     {(() => {
                       const k = calcKonversi(konversiForm)
                       return (
                         <div style={{ fontSize: 13 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                            <span>Harga per {konversiForm.satuan_beli}</span>
-                            <span style={{ fontWeight: 600 }}>{formatRp(k.hargaPerSatuanBeli)}</span>
+                            <span>HPP per resep</span><span style={{ fontWeight: 600 }}>{formatRp(k.hargaPerResep)}</span>
                           </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                            <span>Biaya {konversiForm.qty_resep} {konversiForm.satuan_resep}</span>
-                            <span style={{ fontWeight: 600 }}>{formatRp(k.hargaPerResep)}</span>
-                          </div>
-                          {konversiForm.pax && (
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                              <span>HPP per pax</span>
-                              <span style={{ fontWeight: 700, color: '#C0392B' }}>{formatRp(k.hargaPerPax)}</span>
-                            </div>
-                          )}
-                          {k.totalPax > 0 && (
-                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                              <span>Total pax dari {konversiForm.qty_beli} {konversiForm.satuan_beli}</span>
-                              <span style={{ fontWeight: 700, color: '#2D5016' }}>{k.totalPax} pax</span>
-                            </div>
-                          )}
+                          {konversiForm.pax && <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                            <span>HPP per pax</span><span style={{ fontWeight: 700, color: '#C0392B' }}>{formatRp(k.hargaPerPax)}</span>
+                          </div>}
+                          {k.totalPax > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span>Total pax dari {konversiForm.qty_beli} {konversiForm.satuan_beli}</span>
+                            <span style={{ fontWeight: 700, color: '#2D5016' }}>{k.totalPax} pax</span>
+                          </div>}
                         </div>
                       )
                     })()}
@@ -229,17 +334,11 @@ export default function KalkulatorHPP() {
             </div>
           )}
 
-          <div className="card mb-2" style={{ padding: '0.75rem 1rem' }}>
-            <input className="form-control" placeholder="🔍 Cari nama bahan..." value={searchKonversi} onChange={e => setSearchKonversi(e.target.value)} />
-          </div>
-          {konversiList.filter(k => !searchKonversi || k.nama_bahan.toLowerCase().includes(searchKonversi.toLowerCase())).length === 0 ? (
-            <div className="card empty-state">
-              <p>Belum ada catatan konversi.</p>
-              <p style={{ fontSize: 12, marginTop: 8 }}>Tambahkan konversi bahan seperti: Beras 1kg = 12 pax ricebowl</p>
-            </div>
+          {filteredKonversi.length === 0 ? (
+            <div className="card empty-state"><p>Belum ada catatan konversi.</p></div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
-              {konversiList.filter(k => !searchKonversi || k.nama_bahan.toLowerCase().includes(searchKonversi.toLowerCase())).map((k, idx) => {
+              {filteredKonversi.map((k, idx) => {
                 const calc = calcKonversi(k)
                 return (
                   <div key={idx} className="card">
@@ -250,106 +349,30 @@ export default function KalkulatorHPP() {
                         <button className="btn btn-sm btn-danger" onClick={() => deleteKonversi(idx)}>🗑</button>
                       </div>
                     </div>
-                    <div style={{ background: '#E8F5E0', borderRadius: 8, padding: '8px 10px', marginBottom: 8, fontSize: 13 }}>
+                    <div style={{ background: '#E8F5E0', borderRadius: 8, padding: '8px 10px', marginBottom: 6, fontSize: 13 }}>
                       <span style={{ fontWeight: 600, color: '#2D5016' }}>📦 Beli:</span> {k.qty_beli} {k.satuan_beli} = {formatRp(k.harga_beli)}
                     </div>
-                    {k.qty_resep && (
-                      <div style={{ background: '#E0F4FF', borderRadius: 8, padding: '8px 10px', marginBottom: 8, fontSize: 13 }}>
-                        <span style={{ fontWeight: 600, color: '#0077B6' }}>🍳 Pakai:</span> {k.qty_resep} {k.satuan_resep} per resep{k.pax ? ` → ${k.pax} pax` : ''}
-                      </div>
-                    )}
-                    <div style={{ background: '#FFF3D6', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
+                    {k.qty_resep && <div style={{ background: '#E0F4FF', borderRadius: 8, padding: '8px 10px', marginBottom: 6, fontSize: 13 }}>
+                      <span style={{ fontWeight: 600, color: '#0077B6' }}>🍳 Pakai:</span> {k.qty_resep} {k.satuan_resep} → {k.pax} pax
+                    </div>}
+                    <div style={{ background: '#FFF3D6', borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                        {k.qty_resep && (
-                          <div style={{ textAlign: 'center' }}>
-                            <div style={{ fontWeight: 700, fontSize: 14, color: '#C0392B' }}>{formatRp(calc.hargaPerResep)}</div>
-                            <div style={{ fontSize: 10, color: '#888' }}>per resep</div>
-                          </div>
-                        )}
-                        {k.pax && (
-                          <div style={{ textAlign: 'center' }}>
-                            <div style={{ fontWeight: 700, fontSize: 14, color: '#C0392B' }}>{formatRp(calc.hargaPerPax)}</div>
-                            <div style={{ fontSize: 10, color: '#888' }}>per pax</div>
-                          </div>
-                        )}
-                        {calc.totalPax > 0 && (
-                          <div style={{ textAlign: 'center', gridColumn: '1/-1' }}>
-                            <div style={{ fontWeight: 700, fontSize: 14, color: '#2D5016' }}>{calc.totalPax} pax</div>
-                            <div style={{ fontSize: 10, color: '#888' }}>dari {k.qty_beli} {k.satuan_beli}</div>
-                          </div>
-                        )}
+                        <div style={{ textAlign: 'center' }}>
+                          <div style={{ fontWeight: 700, fontSize: 14, color: '#C0392B' }}>{formatRp(calc.hargaPerPax)}</div>
+                          <div style={{ fontSize: 10, color: '#888' }}>per pax</div>
+                        </div>
+                        {calc.totalPax > 0 && <div style={{ textAlign: 'center' }}>
+                          <div style={{ fontWeight: 700, fontSize: 14, color: '#2D5016' }}>{calc.totalPax} pax</div>
+                          <div style={{ fontSize: 10, color: '#888' }}>dari {k.qty_beli} {k.satuan_beli}</div>
+                        </div>}
                       </div>
                     </div>
-                    {k.notes && (
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', borderTop: '1px solid var(--border)', paddingTop: 6 }}>
-                        📝 {k.notes}
-                      </div>
-                    )}
+                    {k.notes && <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', borderTop: '1px solid var(--border)', paddingTop: 6 }}>📝 {k.notes}</div>}
                   </div>
                 )
               })}
             </div>
           )}
-        </div>
-      )}
-
-      {tab === 'hpp' && (
-        <div>
-          <div className="card mb-2" style={{ padding: '1rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <label style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap' }}>Overhead / Biaya Operasional:</label>
-              <input type="range" min="0" max="50" value={overhead} onChange={e => setOverhead(parseInt(e.target.value))} style={{ flex: 1 }} />
-              <span style={{ fontWeight: 700, minWidth: 40 }}>{overhead}%</span>
-            </div>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>Overhead meliputi gas, listrik, kemasan, dan biaya operasional lainnya</p>
-          </div>
-          <div className="card mb-2" style={{ padding: '0.75rem 1rem' }}>
-            <input className="form-control" placeholder="🔍 Cari nama menu..." value={searchHPP} onChange={e => setSearchHPP(e.target.value)} />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
-            {loading ? <div className="loading"><div className="spinner" /></div> : products.filter(p => !searchHPP || p.name.toLowerCase().includes(searchHPP.toLowerCase())).map(p => {
-              const { details, bahanCost, overheadCost, hpp } = calcHPP(p.id)
-              const margin = p.price - hpp
-              const marginPct = p.price > 0 ? ((margin / p.price) * 100).toFixed(1) : 0
-              return (
-                <div key={p.id} className="card">
-                  <div className="flex-between mb-1">
-                    <h4 style={{ fontWeight: 700, fontSize: 14 }}>{p.name}</h4>
-                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Jual: {formatRp(p.price)}</span>
-                  </div>
-                  {details.length === 0 ? (
-                    <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Belum ada resep. Tambahkan di menu Resep.</p>
-                  ) : (
-                    <div>
-                      {details.map((d, i) => (
-                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '3px 0', color: 'var(--text-muted)' }}>
-                          <span>{d.name} ({d.qty} {d.unit})</span>
-                          <span>{formatRp(d.cost)}</span>
-                        </div>
-                      ))}
-                      <div style={{ borderTop: '1px solid var(--border)', marginTop: 8, paddingTop: 8 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
-                          <span>Bahan baku</span><span>{formatRp(bahanCost)}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 6, color: 'var(--text-muted)' }}>
-                          <span>Overhead ({overhead}%)</span><span>{formatRp(overheadCost)}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 14 }}>
-                          <span>HPP</span><span style={{ color: '#C0392B' }}>{formatRp(hpp)}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 13, marginTop: 4 }}>
-                          <span>Margin</span>
-                          <span style={{ color: margin >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                            {formatRp(margin)} ({marginPct}%)
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
         </div>
       )}
     </div>
