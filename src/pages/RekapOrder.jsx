@@ -232,6 +232,14 @@ export default function RekapOrder() {
               <input className="form-control" type="number" value={editForm.total_amount || 0} onChange={e => setEditForm(f => ({ ...f, total_amount: parseInt(e.target.value) }))} />
             </div>
             <div className="form-group">
+              <label className="form-label">🚚 Tanggal Pengiriman</label>
+              <input className="form-control" type="date" value={editForm.delivery_date || ''}
+                onChange={e => setEditForm(f => ({ ...f, delivery_date: e.target.value }))} />
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>
+                Kosongkan jika dikirim hari yang sama dengan tanggal order
+              </p>
+            </div>
+            <div className="form-group">
               <label className="form-label">Status</label>
               <select className="form-control" value={editForm.status} onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}>
                 {['Baru','Diproses','Dikemas','Dikirim','Selesai','Batal'].map(s => <option key={s}>{s}</option>)}
