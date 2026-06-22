@@ -119,10 +119,13 @@ export default function LaporanLabaRugi() {
 
   // Kalkulasi
   const labaKotor   = revenue - hpp
-  const totalBeban  = expenses.reduce((s,e) => s + e.amount, 0)
+  const totalBeban  = expenses.reduce((s,e) => s + e.amount, 0) + nilaiPromo
   const labaBersih  = labaKotor - totalBeban
   const marginKotor = revenue > 0 ? ((labaKotor / revenue) * 100).toFixed(1) : 0
   const marginBersih= revenue > 0 ? ((labaBersih / revenue) * 100).toFixed(1) : 0
+
+  // Nilai free items (beban promo)
+  const nilaiPromo = 0 // TODO: hitung dari order_items dengan prefix 🆓
 
   // Beban per kategori
   const bebanByKat = {}
