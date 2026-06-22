@@ -21,6 +21,7 @@ export default function RekapOrder() {
   const [updating, setUpdating] = useState(null)
   const [editOrder, setEditOrder] = useState(null)
   const [editForm, setEditForm] = useState({})
+  const [savingDelivery, setSavingDelivery] = useState(null)
   const [saving, setSaving] = useState(false)
   const autoFixRef = useRef(false)
 
@@ -110,13 +111,16 @@ export default function RekapOrder() {
       phone: o.phone || '',
       catatan: o.catatan || '',
       total_amount: o.total_amount,
-      status: o.status
+      status: o.status,
+      delivery_date: o.delivery_date || ''
     })
   }
 
   const saveEdit = async () => {
     setSaving(true)
-    await supabase.from('orders').update({ ...editForm, updated_at: new Date().toISOString() }).eq('id', editOrder.id)
+    const updateData = { ...editForm, updated_at: new Date().toISOString() }
+    if (!updateData.delivery_date) delete updateData.delivery_date
+    await supabase.from('orders').update(updateData).eq('id', editOrder.id)
     setEditOrder(null)
     setSaving(false)
     fetchOrders(filterMode, dateFrom, dateTo, filterStatus)
@@ -279,9 +283,12 @@ export default function RekapOrder() {
                           {o.order_number?.slice(-8) || o.id.slice(0,6)}
                         </td>
                         <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-                          {new Date(o.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: '2-digit' })}
+                          <div>{new Date(o.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: '2-digit' })}</div>
                           {isToday(o.created_at) && (
                             <span style={{ display: 'block', fontSize: 9, background: '#E8F5E0', color: '#2D5016', borderRadius: 4, padding: '1px 4px', fontWeight: 700, marginTop: 2 }}>HARI INI</span>
+                          )}
+                          {o.delivery_date && o.delivery_date !== o.created_at?.slice(0,10) && (
+                            <span style={{ display: 'block', fontSize: 9, background: '#EFF6FF', color: '#1D4ED8', borderRadius: 4, padding: '1px 4px', fontWeight: 700, marginTop: 2 }}>🚚 {new Date(o.delivery_date + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
                           )}
                         </td>
                         <td>
