@@ -9,7 +9,6 @@ const formatNum = (n, unit) => {
 
 const today = () => new Date().toISOString().split('T')[0]
 
-// Konversi satuan resep ke satuan beli
 const convertUnit = (qty, fromUnit, toUnit) => {
   if (fromUnit === toUnit) return qty
   if (fromUnit === 'gram' && toUnit === 'kg') return qty / 1000
@@ -20,6 +19,8 @@ const convertUnit = (qty, fromUnit, toUnit) => {
 }
 
 const FOOD_CATEGORIES = ['ricebowl', 'mie', 'dimsum', 'snack']
+const catIcon = { ricebowl:'🍚', mie:'🍜', dimsum:'🥟', snack:'🍿' }
+const catLabel = { ricebowl:'Rice Bowl', mie:'Mie', dimsum:'Dimsum', snack:'Snack' }
 
 export default function Dapur() {
   const [orders, setOrders] = useState([])
@@ -29,14 +30,15 @@ export default function Dapur() {
   const [loading, setLoading] = useState(true)
   const [date, setDate] = useState(today())
   const [tab, setTab] = useState('kebutuhan')
-  const [checklist, setChecklist] = useState({}) // bahan yang sudah disiapkan
+  const [checklist, setChecklist] = useState({})
 
   const fetchData = useCallback(async () => {
     setLoading(true)
+    const d = date
     const [ordersRes, recipesRes, matsRes, prodsRes] = await Promise.all([
       supabase.from('orders')
         .select('*, order_items(*)')
-        .or(`delivery_date.eq.${date},and(delivery_date.is.null,created_at.gte.${date}T00:00:00+07:00,created_at.lte.${date}T23:59:59+07:00)`)
+        .or(`delivery_date.eq.${d},and(delivery_date.is.null,created_at.gte.${d}T00:00:00+07:00,created_at.lte.${d}T23:59:59+07:00)`)
         .neq('status', 'Batal'),
       supabase.from('recipes').select('*'),
       supabase.from('raw_materials').select('*'),
@@ -51,7 +53,6 @@ export default function Dapur() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  // Realtime update saat ada order baru
   useEffect(() => {
     const ch = supabase.channel('dapur-rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchData)
@@ -59,81 +60,55 @@ export default function Dapur() {
     return () => supabase.removeChannel(ch)
   }, [fetchData])
 
-  // ── KALKULASI UTAMA ──────────────────────────────────────
-  // 1. Hitung qty per produk dari semua order hari ini
+  // Hitung qty per produk
   const productQty = {}
   orders.forEach(order => {
     ;(order.order_items || []).forEach(item => {
       if (!item.product_id) return
       const prod = products.find(p => p.id === item.product_id)
-      if (!prod) return
-      // Hanya produk makanan
-      if (!FOOD_CATEGORIES.includes(prod.category)) return
+      if (!prod || !FOOD_CATEGORIES.includes(prod.category)) return
       productQty[item.product_id] = (productQty[item.product_id] || 0) + item.quantity
     })
   })
 
-  // 2. Hitung kebutuhan bahan baku dari resep
-  const bahanKebutuhan = {}
+  // Hitung kebutuhan bahan
+  const bahanMap = {}
   Object.entries(productQty).forEach(([productId, qty]) => {
-    const prodRecipes = recipes.filter(r => r.product_id === productId)
-    prodRecipes.forEach(r => {
+    recipes.filter(r => r.product_id === productId).forEach(r => {
       const mat = materials.find(m => m.id === r.raw_material_id)
       if (!mat) return
-      // Skip kemasan dan minuman
       const n = mat.name.toLowerCase()
       const isKemasan = ['bowl','sendok','kresek','stiker','plastik','box','cup','tissue'].some(k => n.includes(k))
       if (isKemasan) return
 
-      const key = mat.id
       const totalQty = convertUnit(r.qty_used * qty, r.unit, mat.unit)
-
-      if (!bahanKebutuhan[key]) {
-        bahanKebutuhan[key] = {
-          id: mat.id,
-          name: mat.name,
-          unit: mat.unit,
-          stokAda: mat.stock_qty || 0,
-          totalNeeded: 0,
-          products: [],
-        }
+      if (!bahanMap[mat.id]) {
+        bahanMap[mat.id] = { id: mat.id, name: mat.name, unit: mat.unit, stokAda: mat.stock_qty || 0, totalNeeded: 0, products: [] }
       }
-      bahanKebutuhan[key].totalNeeded += totalQty
-      bahanKebutuhan[key].products.push({
-        name: products.find(p => p.id === productId)?.name || productId,
-        qty,
-        perPorsi: r.qty_used,
-        unit: r.unit,
-        total: totalQty,
+      bahanMap[mat.id].totalNeeded += totalQty
+      bahanMap[mat.id].products.push({
+        name: products.find(p => p.id === productId)?.name || '',
+        qty, perPorsi: r.qty_used, unit: r.unit, total: totalQty,
       })
     })
   })
 
-  const bahanList = Object.values(bahanKebutuhan).sort((a, b) => a.name.localeCompare(b.name))
+  const bahanList = Object.values(bahanMap).sort((a, b) => a.name.localeCompare(b.name))
 
-  // 3. Rekap menu per produk
   const menuList = Object.entries(productQty).map(([productId, qty]) => {
     const prod = products.find(p => p.id === productId)
     return { id: productId, name: prod?.name || productId, category: prod?.category, qty }
-  }).sort((a, b) => {
-    const catOrder = ['ricebowl','mie','dimsum','snack']
-    return catOrder.indexOf(a.category) - catOrder.indexOf(b.category)
-  })
+  }).sort((a, b) => FOOD_CATEGORIES.indexOf(a.category) - FOOD_CATEGORIES.indexOf(b.category))
 
-  // 4. Status per order (untuk tab pesanan)
   const totalOrders = orders.length
   const totalItems = Object.values(productQty).reduce((s, q) => s + q, 0)
-  const totalMenuTypes = Object.keys(productQty).length
-
-  const catIcon = { ricebowl:'🍚', mie:'🍜', dimsum:'🥟', snack:'🍿', minuman:'🥤' }
-  const catLabel = { ricebowl:'Rice Bowl', mie:'Mie', dimsum:'Dimsum', snack:'Snack' }
-
-  const selectedDate = new Date(date)
   const isToday = date === today()
+  const checkedCount = Object.values(checklist).filter(Boolean).length
+
+  const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 
   return (
     <div>
-      {/* Header */}
       <div className="page-header flex-between" style={{ flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1>👨‍🍳 Dashboard Dapur</h1>
@@ -142,21 +117,20 @@ export default function Dapur() {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <input type="date" value={date} onChange={e => setDate(e.target.value)}
             className="form-control" style={{ width: 'auto', fontWeight: 600 }} />
-          {!isToday && (
-            <button onClick={() => setDate(today())} className="btn btn-outline btn-sm">
-              Hari Ini
-            </button>
-          )}
+          {!isToday && <button onClick={() => setDate(today())} className="btn btn-outline btn-sm">Hari Ini</button>}
           <button onClick={fetchData} className="btn btn-outline btn-sm">🔄</button>
         </div>
       </div>
 
-      {/* Summary cards */}
+      <div style={{ fontSize: 13, color: '#2563EB', marginBottom: 12, padding: '8px 12px', background: '#EFF6FF', borderRadius: 8 }}>
+        📅 Menampilkan pesanan untuk pengiriman: <strong>{dateLabel}</strong>
+      </div>
+
       <div className="grid-4 mb-2">
         {[
           { label: 'Total Order', value: totalOrders, icon: '📋', color: '#1A2E0A' },
           { label: 'Total Porsi', value: totalItems, icon: '🍽️', color: '#D97706' },
-          { label: 'Jenis Menu', value: totalMenuTypes, icon: '📝', color: '#2563EB' },
+          { label: 'Jenis Menu', value: Object.keys(productQty).length, icon: '📝', color: '#2563EB' },
           { label: 'Jenis Bahan', value: bahanList.length, icon: '🥩', color: '#16A34A' },
         ].map((s, i) => (
           <div key={i} className="card" style={{ textAlign: 'center', padding: '1rem' }}>
@@ -167,77 +141,56 @@ export default function Dapur() {
         ))}
       </div>
 
-      {/* Realtime badge */}
-      <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
-        📅 Menampilkan pesanan dengan <strong>tanggal pengiriman {new Date(date + 'T00:00:00').toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })}</strong>
-        <span style={{ color: '#2563EB', marginLeft: 6 }}>(termasuk order tanpa tanggal kirim yang dibuat hari ini)</span>
-      </div>
-
       {isToday && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, padding: '8px 14px', background: '#E8F5E0', borderRadius: 10 }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#16A34A', animation: 'pulse 2s infinite', flexShrink: 0 }} />
-          <span style={{ fontSize: 13, color: '#2D5016', fontWeight: 600 }}>
-            Update realtime — data berubah otomatis saat ada pesanan baru masuk
-          </span>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#16A34A', flexShrink: 0 }} />
+          <span style={{ fontSize: 13, color: '#2D5016', fontWeight: 600 }}>Update realtime saat pesanan baru masuk</span>
         </div>
       )}
 
-      {/* Tabs */}
       <div className="tabs">
-        <button className={`tab ${tab === 'kebutuhan' ? 'active' : ''}`} onClick={() => setTab('kebutuhan')}>
-          🥩 Kebutuhan Bahan ({bahanList.length})
-        </button>
-        <button className={`tab ${tab === 'menu' ? 'active' : ''}`} onClick={() => setTab('menu')}>
-          🍽️ Rekap Menu ({menuList.length})
-        </button>
-        <button className={`tab ${tab === 'order' ? 'active' : ''}`} onClick={() => setTab('order')}>
-          📋 Daftar Order ({totalOrders})
-        </button>
+        <button className={`tab ${tab === 'kebutuhan' ? 'active' : ''}`} onClick={() => setTab('kebutuhan')}>🥩 Kebutuhan Bahan ({bahanList.length})</button>
+        <button className={`tab ${tab === 'menu' ? 'active' : ''}`} onClick={() => setTab('menu')}>🍽️ Rekap Menu ({menuList.length})</button>
+        <button className={`tab ${tab === 'order' ? 'active' : ''}`} onClick={() => setTab('order')}>📋 Daftar Order ({totalOrders})</button>
       </div>
 
       {loading ? (
         <div className="loading"><div className="spinner" /><span>Memuat data dapur...</span></div>
       ) : (
-        <>
+        <div>
+
           {/* ═══ TAB KEBUTUHAN BAHAN ═══ */}
           {tab === 'kebutuhan' && (
             <div>
               {bahanList.length === 0 ? (
                 <div className="card empty-state">
                   <div style={{ fontSize: 48, marginBottom: 12 }}>🍳</div>
-                  <p style={{ fontWeight: 600 }}>Belum ada pesanan makanan hari ini</p>
+                  <p style={{ fontWeight: 600 }}>Belum ada pesanan makanan</p>
                   <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 6 }}>
-                    {totalOrders > 0 ? 'Pesanan ada tapi resep belum diisi di menu Resep' : 'Pesanan akan muncul di sini saat order masuk'}
+                    {totalOrders > 0 ? 'Ada pesanan tapi resep belum diisi di menu Resep' : 'Pesanan akan muncul di sini saat order masuk'}
                   </p>
                 </div>
               ) : (
                 <div>
                   <div className="alert alert-info mb-2" style={{ fontSize: 13 }}>
-                    💡 Semua kebutuhan bahan dihitung dari <strong>resep</strong> × <strong>jumlah porsi dipesan</strong>. Pastikan resep sudah diisi lengkap.
+                    💡 Kebutuhan bahan dihitung dari <strong>resep</strong> × <strong>jumlah porsi</strong>. Centang bahan yang sudah disiapkan.
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+                    <button onClick={() => window.print()} className="btn btn-outline btn-sm">🖨️ Print</button>
                   </div>
 
-                  {/* Print button */}
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-                    <button onClick={() => window.print()} className="btn btn-outline btn-sm">
-                      🖨️ Print Kebutuhan Bahan
-                    </button>
-                  </div>
-
+                  {/* Daftar bahan */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {bahanList.map(bahan => {
-                      const isChecked = checklist[bahan.id]
+                      const isChecked = !!checklist[bahan.id]
                       const stokCukup = bahan.stokAda >= bahan.totalNeeded
-                      const stokKurang = bahan.stokAda < bahan.totalNeeded
                       const kekurangan = Math.max(0, bahan.totalNeeded - bahan.stokAda)
-
                       return (
                         <div key={bahan.id} className="card"
-                          style={{ borderLeft: `4px solid ${isChecked ? '#16A34A' : stokKurang ? '#DC2626' : '#E8A838'}`, opacity: isChecked ? 0.7 : 1 }}>
+                          style={{ borderLeft: `4px solid ${isChecked ? '#16A34A' : !stokCukup ? '#DC2626' : '#E8A838'}`, opacity: isChecked ? 0.7 : 1 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
-
-                            {/* Nama + checklist */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                              <input type="checkbox" checked={!!isChecked}
+                              <input type="checkbox" checked={isChecked}
                                 onChange={() => setChecklist(c => ({ ...c, [bahan.id]: !c[bahan.id] }))}
                                 style={{ width: 20, height: 20, cursor: 'pointer', accentColor: '#16A34A' }} />
                               <div>
@@ -247,41 +200,27 @@ export default function Dapur() {
                                 {isChecked && <span style={{ fontSize: 11, color: '#16A34A', fontWeight: 600 }}>✅ Sudah disiapkan</span>}
                               </div>
                             </div>
-
-                            {/* Qty kebutuhan */}
-                            <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
                               <div style={{ textAlign: 'center', background: '#1A2E0A', borderRadius: 10, padding: '8px 16px' }}>
                                 <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', marginBottom: 2 }}>SIAPKAN</div>
-                                <div style={{ fontSize: 22, fontWeight: 800, color: '#E8A838' }}>
-                                  {formatNum(bahan.totalNeeded, bahan.unit)}
-                                </div>
+                                <div style={{ fontSize: 22, fontWeight: 800, color: '#E8A838' }}>{formatNum(bahan.totalNeeded, bahan.unit)}</div>
                                 <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>{bahan.unit}</div>
                               </div>
-
                               <div style={{ textAlign: 'center' }}>
                                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>STOK ADA</div>
-                                <div style={{ fontSize: 16, fontWeight: 700, color: stokCukup ? '#16A34A' : '#DC2626' }}>
-                                  {formatNum(bahan.stokAda, bahan.unit)}
-                                </div>
+                                <div style={{ fontSize: 16, fontWeight: 700, color: stokCukup ? '#16A34A' : '#DC2626' }}>{formatNum(bahan.stokAda, bahan.unit)}</div>
                                 <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{bahan.unit}</div>
                               </div>
-
-                              {stokKurang && (
+                              {!stokCukup && (
                                 <div style={{ textAlign: 'center', background: '#FEF2F2', borderRadius: 8, padding: '6px 12px' }}>
                                   <div style={{ fontSize: 11, color: '#DC2626', fontWeight: 700, marginBottom: 2 }}>KURANG</div>
-                                  <div style={{ fontSize: 16, fontWeight: 800, color: '#DC2626' }}>
-                                    {formatNum(kekurangan, bahan.unit)}
-                                  </div>
+                                  <div style={{ fontSize: 16, fontWeight: 800, color: '#DC2626' }}>{formatNum(kekurangan, bahan.unit)}</div>
                                   <div style={{ fontSize: 11, color: '#DC2626' }}>{bahan.unit}</div>
                                 </div>
                               )}
-                              {stokCukup && (
-                                <span style={{ fontSize: 12, color: '#16A34A', fontWeight: 700 }}>✅ Cukup</span>
-                              )}
+                              {stokCukup && <span style={{ fontSize: 12, color: '#16A34A', fontWeight: 700 }}>✅ Cukup</span>}
                             </div>
                           </div>
-
-                          {/* Detail per produk */}
                           <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                             {bahan.products.map((p, i) => (
                               <div key={i} style={{ background: 'var(--bg)', borderRadius: 8, padding: '5px 10px', fontSize: 12 }}>
@@ -297,40 +236,31 @@ export default function Dapur() {
                     })}
                   </div>
 
-                </div>
-
-              {/* Progress checklist - selalu tampil jika ada bahan */}
-              {bahanList.length > 0 && (
-                <div className="card" style={{ marginTop: 12, padding: '1rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 14, fontWeight: 600 }}>
-                    <span>✅ Progress Persiapan Bahan</span>
-                    <span style={{ color: '#16A34A' }}>{Object.values(checklist).filter(Boolean).length}/{bahanList.length} bahan siap</span>
-                  </div>
-                  <div style={{ background: '#F0F0F0', borderRadius: 20, height: 14, overflow: 'hidden' }}>
-                    <div style={{
-                      width: `${bahanList.length > 0 ? Math.round((Object.values(checklist).filter(Boolean).length / bahanList.length) * 100) : 0}%`,
-                      background: 'linear-gradient(90deg, #E8A838, #16A34A)',
-                      height: '100%', borderRadius: 20, transition: 'width 0.5s',
-                      display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 6
-                    }}>
-                      {Object.values(checklist).filter(Boolean).length > 0 && (
-                        <span style={{ fontSize: 10, color: '#fff', fontWeight: 700 }}>
-                          {Math.round((Object.values(checklist).filter(Boolean).length / bahanList.length) * 100)}%
-                        </span>
-                      )}
+                  {/* Progress bar */}
+                  <div className="card" style={{ marginTop: 14, padding: '1rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 14, fontWeight: 600 }}>
+                      <span>✅ Progress Persiapan Bahan</span>
+                      <span style={{ color: '#16A34A' }}>{checkedCount}/{bahanList.length} bahan siap</span>
                     </div>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 11, color: 'var(--text-muted)' }}>
-                    <span>0%</span>
-                    <span>100% Siap Masak 🍳</span>
-                  </div>
-                  {Object.values(checklist).filter(Boolean).length === bahanList.length && bahanList.length > 0 && (
-                    <div style={{ textAlign: 'center', marginTop: 10, fontSize: 16, fontWeight: 700, color: '#16A34A', background: '#E8F5E0', borderRadius: 10, padding: 10 }}>
-                      🎉 Semua bahan sudah disiapkan! Siap masak!
+                    <div style={{ background: '#F0F0F0', borderRadius: 20, height: 14, overflow: 'hidden' }}>
+                      <div style={{
+                        width: `${bahanList.length > 0 ? Math.round((checkedCount / bahanList.length) * 100) : 0}%`,
+                        background: 'linear-gradient(90deg, #E8A838, #16A34A)',
+                        height: '100%', borderRadius: 20, transition: 'width 0.5s',
+                      }} />
                     </div>
-                  )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: 11, color: 'var(--text-muted)' }}>
+                      <span>0%</span>
+                      <span style={{ fontWeight: 600 }}>{bahanList.length > 0 ? Math.round((checkedCount / bahanList.length) * 100) : 0}%</span>
+                      <span>100% Siap Masak 🍳</span>
+                    </div>
+                    {checkedCount === bahanList.length && bahanList.length > 0 && (
+                      <div style={{ textAlign: 'center', marginTop: 10, fontSize: 16, fontWeight: 700, color: '#16A34A', background: '#E8F5E0', borderRadius: 10, padding: 10 }}>
+                        🎉 Semua bahan sudah disiapkan! Siap masak!
+                      </div>
+                    )}
+                  </div>
                 </div>
-              )}
               )}
             </div>
           )}
@@ -342,22 +272,18 @@ export default function Dapur() {
                 <div className="card empty-state"><p>Belum ada pesanan makanan</p></div>
               ) : (
                 <div>
-                  {/* Group by category */}
-                  {['ricebowl','mie','dimsum','snack'].map(cat => {
+                  {FOOD_CATEGORIES.map(cat => {
                     const items = menuList.filter(m => m.category === cat)
                     if (items.length === 0) return null
                     const totalCat = items.reduce((s, m) => s + m.qty, 0)
                     return (
                       <div key={cat} className="card mb-2">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                          <h3 style={{ fontWeight: 700, fontSize: 16 }}>
-                            {catIcon[cat]} {catLabel[cat]}
-                          </h3>
+                          <h3 style={{ fontWeight: 700, fontSize: 16 }}>{catIcon[cat]} {catLabel[cat]}</h3>
                           <div style={{ background: '#1A2E0A', color: '#E8A838', borderRadius: 20, padding: '4px 14px', fontSize: 13, fontWeight: 700 }}>
                             Total: {totalCat} porsi
                           </div>
                         </div>
-
                         {items.map((m, i) => {
                           const pct = (m.qty / totalCat) * 100
                           return (
@@ -374,7 +300,6 @@ export default function Dapur() {
                               <div style={{ background: '#F0F0F0', borderRadius: 20, height: 8, overflow: 'hidden' }}>
                                 <div style={{ width: `${pct}%`, background: '#E8A838', height: '100%', borderRadius: 20 }} />
                               </div>
-                              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, textAlign: 'right' }}>{pct.toFixed(0)}% dari {catLabel[cat]}</div>
                             </div>
                           )
                         })}
@@ -390,7 +315,7 @@ export default function Dapur() {
           {tab === 'order' && (
             <div>
               {orders.length === 0 ? (
-                <div className="card empty-state"><p>Belum ada order hari ini</p></div>
+                <div className="card empty-state"><p>Belum ada order</p></div>
               ) : (
                 <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
                   <table className="table">
@@ -417,7 +342,7 @@ export default function Dapur() {
                               ))}
                             </td>
                             <td>
-                              <span className={`badge ${order.status === 'Selesai' ? 'badge-success' : order.status === 'Batal' ? 'badge-danger' : 'badge-warning'}`}>
+                              <span className={`badge ${order.status === 'Selesai' ? 'badge-success' : 'badge-warning'}`}>
                                 {order.status}
                               </span>
                             </td>
@@ -430,18 +355,13 @@ export default function Dapur() {
               )}
             </div>
           )}
-        </>
+
+        </div>
       )}
 
       <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.4; }
-        }
-        @media print {
-          .tabs, button, .page-header { display: none !important; }
-          .card { break-inside: avoid; }
-        }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+        @media print { .tabs, button, .page-header { display: none !important; } .card { break-inside: avoid; } }
       `}</style>
     </div>
   )
