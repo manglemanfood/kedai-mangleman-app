@@ -118,18 +118,14 @@ export default function LaporanLabaRugi() {
   useEffect(() => { fetchData() }, [fetchData])
 
   // Kalkulasi
+  const nilaiPromo = 0 // beban promo free item
   const labaKotor   = revenue - hpp
+  const bebanByKat = {}
+  expenses.forEach(e => { bebanByKat[e.category] = (bebanByKat[e.category] || 0) + e.amount })
   const totalBeban  = expenses.reduce((s,e) => s + e.amount, 0) + nilaiPromo
   const labaBersih  = labaKotor - totalBeban
   const marginKotor = revenue > 0 ? ((labaKotor / revenue) * 100).toFixed(1) : 0
   const marginBersih= revenue > 0 ? ((labaBersih / revenue) * 100).toFixed(1) : 0
-
-  // Nilai free items (beban promo)
-  const nilaiPromo = 0 // TODO: hitung dari order_items dengan prefix 🆓
-
-  // Beban per kategori
-  const bebanByKat = {}
-  expenses.forEach(e => { bebanByKat[e.category] = (bebanByKat[e.category] || 0) + e.amount })
 
   // Arus kas
   const totalCashIn  = cashIn.reduce((s,[,v]) => s+v, 0)
