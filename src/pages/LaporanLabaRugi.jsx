@@ -342,13 +342,19 @@ export default function LaporanLabaRugi() {
                   {/* Beban Operasional */}
                   <div style={{ marginBottom: 14 }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: '#DC2626', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>III. BEBAN OPERASIONAL</div>
+                    {nilaiPromo > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '3px 8px', background: '#FFF0F0', borderRadius: 4, marginBottom: 2 }}>
+                        <span>Promo Free Item 🆓</span>
+                        <span style={{ color: '#DC2626' }}>({formatRp(nilaiPromo)})</span>
+                      </div>
+                    )}
                     {Object.entries(bebanByKat).map(([kat, total]) => (
                       <div key={kat} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '3px 8px' }}>
                         <span style={{ color: 'var(--text-muted)' }}>{kat}</span>
                         <span style={{ color: '#DC2626' }}>({formatRp(total)})</span>
                       </div>
                     ))}
-                    {Object.keys(bebanByKat).length === 0 && (
+                    {Object.keys(bebanByKat).length === 0 && nilaiPromo === 0 && (
                       <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '3px 8px' }}>Belum ada beban operasional</div>
                     )}
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, padding: '6px 8px', borderTop: '1px solid #E5E5E5', marginTop: 4 }}>
