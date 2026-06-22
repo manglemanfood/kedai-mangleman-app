@@ -35,13 +35,23 @@ export default function RekapOrder() {
 
       const td = todayStr()
 
+      // Filter berdasarkan delivery_date jika ada, fallback ke created_at
       if (mode === 'hari-ini') {
-        // Pakai date() function Supabase agar timezone-safe
-        q = q.gte('created_at', td + 'T00:00:00+07:00')
-             .lte('created_at', td + 'T23:59:59+07:00')
+        q = q.or(
+          `delivery_date.eq.${td},` +
+          `and(delivery_date.is.null,created_at.gte.${td}T00:00:00+07:00,created_at.lte.${td}T23:59:59+07:00)`
+        )
       } else if (mode === 'custom') {
-        if (from) q = q.gte('created_at', from + 'T00:00:00+07:00')
-        if (to)   q = q.lte('created_at', to   + 'T23:59:59+07:00')
+        if (from && to) {
+          q = q.or(
+            `and(delivery_date.gte.${from},delivery_date.lte.${to}),` +
+            `and(delivery_date.is.null,created_at.gte.${from}T00:00:00+07:00,created_at.lte.${to}T23:59:59+07:00)`
+          )
+        } else if (from) {
+          q = q.or(`delivery_date.gte.${from},and(delivery_date.is.null,created_at.gte.${from}T00:00:00+07:00)`)
+        } else if (to) {
+          q = q.or(`delivery_date.lte.${to},and(delivery_date.is.null,created_at.lte.${to}T23:59:59+07:00)`)
+        }
       }
       // mode === 'semua' → no date filter
 
@@ -271,7 +281,7 @@ export default function RekapOrder() {
                 <thead>
                   <tr>
                     <th>Order #</th>
-                    <th>Tanggal</th>
+                    <th>Tgl Order / Kirim</th>
                     <th>Customer</th>
                     <th>Lokasi</th>
                     <th>Total</th>
@@ -291,12 +301,24 @@ export default function RekapOrder() {
                           {o.order_number?.slice(-8) || o.id.slice(0,6)}
                         </td>
                         <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-                          <div>{new Date(o.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: '2-digit' })}</div>
-                          {isToday(o.created_at) && (
+                          {/* Tanggal pengiriman */}
+                          <div style={{ fontWeight: 600, color: '#1A2E0A' }}>
+                            🚚 {o.delivery_date
+                              ? new Date(o.delivery_date + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: '2-digit' })
+                              : new Date(o.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: '2-digit' })
+                            }
+                          </div>
+                          {/* Tanggal order jika berbeda */}
+                          {o.delivery_date && o.delivery_date !== o.created_at?.slice(0,10) && (
+                            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>
+                              Order: {new Date(o.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                            </div>
+                          )}
+                          {!o.delivery_date && isToday(o.created_at) && (
                             <span style={{ display: 'block', fontSize: 9, background: '#E8F5E0', color: '#2D5016', borderRadius: 4, padding: '1px 4px', fontWeight: 700, marginTop: 2 }}>HARI INI</span>
                           )}
-                          {o.delivery_date && o.delivery_date !== o.created_at?.slice(0,10) && (
-                            <span style={{ display: 'block', fontSize: 9, background: '#EFF6FF', color: '#1D4ED8', borderRadius: 4, padding: '1px 4px', fontWeight: 700, marginTop: 2 }}>🚚 {new Date(o.delivery_date + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
+                          {o.delivery_date === new Date().toISOString().split('T')[0] && (
+                            <span style={{ display: 'block', fontSize: 9, background: '#E8F5E0', color: '#2D5016', borderRadius: 4, padding: '1px 4px', fontWeight: 700, marginTop: 2 }}>KIRIM HARI INI</span>
                           )}
                         </td>
                         <td>
