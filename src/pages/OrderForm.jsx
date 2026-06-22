@@ -21,14 +21,17 @@ const categoryLabel = {
 // Kategori yang pakai dropdown (pilih varian)
 const DROPDOWN_CATEGORIES = ['mie', 'dimsum']
 
-function buildWAMessage(info, cartItems, cart, promoCart, total, orderNum) {
+function buildWAMessage(info, cartItems, cart, promoCart, freeItems, total, orderNum) {
   const regularItems = cartItems.map(p =>
     `  • ${p.name} x${cart[p.id]} = ${formatHarga(p.price * cart[p.id])}`
   )
   const promoItems = promoCart.map(pc =>
     `  • 🎁 ${pc.promo.name} x${pc.qty} = ${formatHarga(pc.promo.bundle_price * pc.qty)} (hemat ${formatHarga(pc.promo.diskon * pc.qty)})`
   )
-  const items = [...promoItems, ...regularItems].join('\n')
+  const freeItemLines = freeItems.map(fi =>
+    `  • 🆓 ${fi.product.name} x${fi.qty} = GRATIS! (nilai ${formatHarga(fi.originalPrice * fi.qty)})`
+  )
+  const items = [...promoItems, ...regularItems, ...freeItemLines].join('\n')
   return encodeURIComponent(
 `🍱 *ORDER BARU - Kedai MangLeman*
 ━━━━━━━━━━━━━━━━━━
@@ -54,6 +57,33 @@ export default function OrderForm() {
   const [promos, setPromos] = useState([])
   const [cart, setCart] = useState({})
   const [promoCart, setPromoCart] = useState([]) // [{promo, qty}]
+  const [freeItems, setFreeItems] = useState([]) // free items dari promo qty
+  const [showFreeModal, setShowFreeModal] = useState(false)
+  const [pendingFreeRule, setPendingFreeRule] = useState(null)
+
+  // Aturan free item berdasarkan qty ricebowl
+  const FREE_RULES = [
+    {
+      id: 'free5',
+      minQty: 5,
+      category: 'ricebowl',
+      label: '🎁 Beli 5 Ricebowl → Free 1 Juice!',
+      freeCategory: 'minuman',
+      freeChoices: null, // null = semua minuman bisa dipilih
+      maxFreeQty: 1,
+      description: 'Pilih 1 juice gratis (Guava atau Mango)',
+    },
+    {
+      id: 'free10',
+      minQty: 10,
+      category: 'ricebowl',
+      label: '🎁🎁 Beli 10 Ricebowl → Free 2 Juice Strawberry!',
+      freeCategory: 'minuman',
+      freeChoices: ['JUICE Strawberry'], // spesifik produk
+      maxFreeQty: 2,
+      description: 'Dapat 2 Juice Strawberry gratis!',
+    },
+  ]
   const [info, setInfo] = useState({ name: '', gedung: '', lantai: '', phone: '', catatan: '' })
   const [loading, setLoading] = useState(false)
   const [orderNum, setOrderNum] = useState('')
@@ -147,8 +177,18 @@ export default function OrderForm() {
     return next
   })
 
+  // Hitung qty ricebowl di cart
+  const ricebowlQty = availableProducts
+    .filter(p => p.category === 'ricebowl')
+    .reduce((s, p) => s + (cart[p.id] || 0), 0)
+
+  // Cek aturan free item yang berlaku
+  const activeRules = FREE_RULES.filter(r => ricebowlQty >= r.minQty)
+
   const cartItems = availableProducts.filter(p => cart[p.id])
   const regularTotal = cartItems.reduce((sum, p) => sum + p.price * (cart[p.id] || 0), 0)
+  // Nilai free items (untuk laporan HPP promo)
+  const freeItemsValue = freeItems.reduce((s, fi) => s + (fi.product?.price || 0) * fi.qty, 0)
   const promoTotal = promoCart.reduce((sum, pc) => sum + pc.promo.bundle_price * pc.qty, 0)
   const total = regularTotal + promoTotal
   const totalQty = Object.values(cart).reduce((a, b) => a + b, 0) + promoCart.reduce((s, pc) => s + pc.qty, 0)
@@ -209,7 +249,7 @@ export default function OrderForm() {
         price: p.price,
         subtotal: p.price * cart[p.id],
       }))
-      // Promo bundle items - simpan sebagai 1 item bundle
+      // Promo bundle items
       const promoOrderItems = promoCart.map(pc => ({
         order_id: order.id,
         product_id: null,
@@ -218,7 +258,17 @@ export default function OrderForm() {
         price: pc.promo.bundle_price,
         subtotal: pc.promo.bundle_price * pc.qty,
       }))
-      const allItems = [...regularOrderItems, ...promoOrderItems]
+      // Free items (harga 0, tapi catat nilai aslinya di notes)
+      const freeOrderItems = freeItems.map(fi => ({
+        order_id: order.id,
+        product_id: fi.product.id,
+        product_name: `🆓 ${fi.product.name} (FREE)`,
+        quantity: fi.qty,
+        price: 0,
+        subtotal: 0,
+        notes: `Promo free item, nilai: ${fi.originalPrice * fi.qty}`,
+      }))
+      const allItems = [...regularOrderItems, ...promoOrderItems, ...freeOrderItems]
       if (allItems.length > 0) await supabase.from('order_items').insert(allItems)
 
       if (customerId) {
@@ -237,13 +287,35 @@ export default function OrderForm() {
 
       const num = order.order_number || order.id.slice(0, 8).toUpperCase()
       setOrderNum(num)
-      setWaUrl(`https://wa.me/${ADMIN_WA}?text=${buildWAMessage(info, cartItems, cart, promoCart, total, num)}`)
+      setWaUrl(`https://wa.me/${ADMIN_WA}?text=${buildWAMessage(info, cartItems, cart, promoCart, freeItems, total, num)}`)
       setStep(4)
     } catch (e) {
       setError('Gagal mengirim pesanan. Coba lagi ya!')
       console.error(e)
     }
     setLoading(false)
+  }
+
+  // Handle free item selection
+  const handleAddFreeItem = (product, rule) => {
+    const FREE_ITEM_VALUE = 7000 // nilai juice ukuran kecil
+    const existing = freeItems.find(fi => fi.ruleId === rule.id)
+    if (existing) {
+      setFreeItems(prev => prev.map(fi => fi.ruleId === rule.id
+        ? { ...fi, product, qty: rule.maxFreeQty }
+        : fi
+      ))
+    } else {
+      setFreeItems(prev => [...prev, {
+        ruleId: rule.id,
+        product,
+        qty: rule.maxFreeQty,
+        price: 0, // FREE
+        originalPrice: FREE_ITEM_VALUE, // nilai beban promo = 7000
+      }])
+    }
+    setShowFreeModal(false)
+    setPendingFreeRule(null)
   }
 
   // ── STEP 4: Sukses ───────────────────────────────
@@ -268,6 +340,12 @@ export default function OrderForm() {
               <span style={{ fontWeight: 600, color: '#16A34A' }}>{formatHarga(pc.promo.bundle_price * pc.qty)}</span>
             </div>
           ))}
+          {freeItems.map((fi, i) => (
+            <div key={`free-${i}`} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
+              <span>🆓 {fi.product.name} x{fi.qty}</span>
+              <span style={{ fontWeight: 600, color: '#16A34A' }}>GRATIS!</span>
+            </div>
+          ))}
           {cartItems.map(p => (
             <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
               <span>{p.name} x{cart[p.id]}</span>
@@ -283,7 +361,7 @@ export default function OrderForm() {
           <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
           Konfirmasi via WhatsApp
         </a>
-        <button onClick={() => { setStep(1); setCart({}); setPromoCart([]); setInfo({ name: '', gedung: '', lantai: '', phone: '', catatan: '' }); setOrderNum(''); setWaUrl('') }}
+        <button onClick={() => { setStep(1); setCart({}); setPromoCart([]); setFreeItems([]); setInfo({ name: '', gedung: '', lantai: '', phone: '', catatan: '' }); setOrderNum(''); setWaUrl('') }}
           style={{ width: '100%', padding: '10px', background: '#F0EDE8', color: '#666', border: 'none', borderRadius: 10, fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
           Pesan Lagi
         </button>
@@ -412,6 +490,85 @@ export default function OrderForm() {
               </div>
             )}
 
+            {/* FREE ITEM NOTIFICATION */}
+            {activeRules.map(rule => {
+              const alreadyChosen = freeItems.find(fi => fi.ruleId === rule.id)
+              return (
+                <div key={rule.id} style={{
+                  background: alreadyChosen ? '#E8F5E0' : 'linear-gradient(135deg, #16A34A, #15803D)',
+                  borderRadius: 14, padding: '12px 16px', marginBottom: 10,
+                  border: alreadyChosen ? '2px solid #16A34A' : 'none',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  boxShadow: '0 4px 15px rgba(22,163,74,0.3)'
+                }}>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 14, color: alreadyChosen ? '#16A34A' : '#fff' }}>
+                      {rule.label}
+                    </div>
+                    <div style={{ fontSize: 12, color: alreadyChosen ? '#2D5016' : 'rgba(255,255,255,0.8)', marginTop: 2 }}>
+                      {alreadyChosen
+                        ? `✅ ${alreadyChosen.product.name} x${alreadyChosen.qty} sudah dipilih`
+                        : rule.description}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (rule.freeChoices) {
+                        // Langsung tambah produk spesifik
+                        const prod = availableProducts.find(p =>
+                          rule.freeChoices.some(fc => p.name.toLowerCase().includes(fc.toLowerCase()))
+                        )
+                        if (prod) handleAddFreeItem(prod, rule)
+                      } else {
+                        // Buka modal pilih
+                        setPendingFreeRule(rule)
+                        setShowFreeModal(true)
+                      }
+                    }}
+                    style={{
+                      background: '#fff', color: '#16A34A', border: 'none',
+                      borderRadius: 10, padding: '8px 14px',
+                      fontWeight: 800, fontSize: 13, cursor: 'pointer',
+                      whiteSpace: 'nowrap', marginLeft: 10
+                    }}>
+                    {alreadyChosen ? '✏️ Ganti' : '🎁 Pilih'}
+                  </button>
+                </div>
+              )
+            })}
+
+            {/* Modal pilih free item */}
+            {showFreeModal && pendingFreeRule && (
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 200, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', padding: '1.5rem', width: '100%', maxWidth: 480, maxHeight: '70vh', overflowY: 'auto' }}>
+                  <div style={{ textAlign: 'center', marginBottom: 16 }}>
+                    <div style={{ fontSize: 32 }}>🎁</div>
+                    <div style={{ fontWeight: 800, fontSize: 17 }}>Pilih Juice Gratis!</div>
+                    <div style={{ fontSize: 13, color: '#888', marginTop: 4 }}>{pendingFreeRule.description}</div>
+                  </div>
+                  {availableProducts
+                    .filter(p => p.category === pendingFreeRule.freeCategory)
+                    .map(p => (
+                      <button key={p.id} onClick={() => handleAddFreeItem(p, pendingFreeRule)}
+                        style={{ width: '100%', padding: '14px 16px', marginBottom: 8, background: '#F8F8F8', border: '2px solid #E5E5E5', borderRadius: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', textAlign: 'left' }}>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</div>
+                          <div style={{ fontSize: 12, color: '#888' }}>Nilai: {formatHarga(p.price)}</div>
+                        </div>
+                        <div style={{ background: '#16A34A', color: '#fff', borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 700 }}>
+                          GRATIS ✓
+                        </div>
+                      </button>
+                    ))
+                  }
+                  <button onClick={() => { setShowFreeModal(false); setPendingFreeRule(null) }}
+                    style={{ width: '100%', padding: 12, background: '#F0F0F0', border: 'none', borderRadius: 10, fontWeight: 600, color: '#666', cursor: 'pointer', marginTop: 4 }}>
+                    Lewati
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Promo yang sudah dipilih */}
             {promoCart.length > 0 && (
               <div style={{ background: '#fff', borderRadius: 12, padding: '12px 14px', marginBottom: 12 }}>
@@ -531,6 +688,14 @@ export default function OrderForm() {
                     <span style={{ display: 'block', fontSize: 11, color: '#DC2626' }}>hemat {formatHarga(pc.promo.diskon * pc.qty)}</span>
                   </span>
                   <span style={{ fontWeight: 600, color: '#16A34A' }}>{formatHarga(pc.promo.bundle_price * pc.qty)}</span>
+                </div>
+              ))}
+              {freeItems.map((fi, i) => (
+                <div key={`free-${i}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #F0EDE8', fontSize: 14 }}>
+                  <span>🆓 {fi.product.name} <span style={{ color: '#888' }}>x{fi.qty}</span>
+                    <span style={{ display: 'block', fontSize: 11, color: '#16A34A' }}>GRATIS! (nilai {formatHarga(fi.originalPrice * fi.qty)})</span>
+                  </span>
+                  <span style={{ fontWeight: 600, color: '#16A34A' }}>Rp 0</span>
                 </div>
               ))}
               {cartItems.map(p => (
