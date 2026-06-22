@@ -8,7 +8,7 @@ const formatHarga = (n) => {
   return 'Rp ' + num.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
 
-const ADMIN_WA = '6281234567890'
+const ADMIN_WA = '6285353292224'
 
 const categoryLabel = {
   ricebowl: '🍚 Rice Bowl',
