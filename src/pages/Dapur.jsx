@@ -297,28 +297,40 @@ export default function Dapur() {
                     })}
                   </div>
 
-                  {/* Progress checklist */}
-                  {bahanList.length > 0 && (
-                    <div className="card" style={{ marginTop: 12, padding: '1rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 14, fontWeight: 600 }}>
-                        <span>Progress Persiapan Bahan</span>
-                        <span>{Object.values(checklist).filter(Boolean).length}/{bahanList.length} bahan</span>
-                      </div>
-                      <div style={{ background: '#F0F0F0', borderRadius: 20, height: 12, overflow: 'hidden' }}>
-                        <div style={{
-                          width: `${bahanList.length > 0 ? (Object.values(checklist).filter(Boolean).length / bahanList.length) * 100 : 0}%`,
-                          background: 'linear-gradient(90deg, #E8A838, #16A34A)',
-                          height: '100%', borderRadius: 20, transition: 'width 0.5s'
-                        }} />
-                      </div>
-                      {Object.values(checklist).filter(Boolean).length === bahanList.length && bahanList.length > 0 && (
-                        <div style={{ textAlign: 'center', marginTop: 10, fontSize: 16, fontWeight: 700, color: '#16A34A' }}>
-                          🎉 Semua bahan sudah disiapkan! Siap masak!
-                        </div>
+                </div>
+
+              {/* Progress checklist - selalu tampil jika ada bahan */}
+              {bahanList.length > 0 && (
+                <div className="card" style={{ marginTop: 12, padding: '1rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 14, fontWeight: 600 }}>
+                    <span>✅ Progress Persiapan Bahan</span>
+                    <span style={{ color: '#16A34A' }}>{Object.values(checklist).filter(Boolean).length}/{bahanList.length} bahan siap</span>
+                  </div>
+                  <div style={{ background: '#F0F0F0', borderRadius: 20, height: 14, overflow: 'hidden' }}>
+                    <div style={{
+                      width: `${bahanList.length > 0 ? Math.round((Object.values(checklist).filter(Boolean).length / bahanList.length) * 100) : 0}%`,
+                      background: 'linear-gradient(90deg, #E8A838, #16A34A)',
+                      height: '100%', borderRadius: 20, transition: 'width 0.5s',
+                      display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 6
+                    }}>
+                      {Object.values(checklist).filter(Boolean).length > 0 && (
+                        <span style={{ fontSize: 10, color: '#fff', fontWeight: 700 }}>
+                          {Math.round((Object.values(checklist).filter(Boolean).length / bahanList.length) * 100)}%
+                        </span>
                       )}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 11, color: 'var(--text-muted)' }}>
+                    <span>0%</span>
+                    <span>100% Siap Masak 🍳</span>
+                  </div>
+                  {Object.values(checklist).filter(Boolean).length === bahanList.length && bahanList.length > 0 && (
+                    <div style={{ textAlign: 'center', marginTop: 10, fontSize: 16, fontWeight: 700, color: '#16A34A', background: '#E8F5E0', borderRadius: 10, padding: 10 }}>
+                      🎉 Semua bahan sudah disiapkan! Siap masak!
                     </div>
                   )}
                 </div>
+              )}
               )}
             </div>
           )}
