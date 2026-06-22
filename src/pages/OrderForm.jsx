@@ -92,59 +92,83 @@ export default function OrderForm() {
 
   useEffect(() => {
     // Load products + recipes + raw materials untuk cek stok
-    Promise.all([
-      supabase.from('products').select('*').eq('is_available', true).order('category'),
-      supabase.from('recipes').select('*, raw_materials(id, name, stock_qty, unit)'),
-    ]).then(([prodRes, recipeRes]) => {
-      const prods = prodRes.data || []
-      const recipes = recipeRes.data || []
+    // Load products dulu - tampilkan semua yang is_available
+    supabase.from('products').select('*').eq('is_available', true).order('category')
+      .then(({ data: prods }) => {
+        if (!prods) return
+        // Set products dulu agar langsung tampil
+        setProducts(prods.map(p => ({ ...p, stockReady: true })))
 
-      // Cek stok bahan utama per produk
-      // Bahan "utama" = bukan kemasan/bumbu (berdasarkan nama)
-      const isKemasan = (name) => ['bowl','sendok','kresek','stiker','label','plastik','kertas','box','cup'].some(k => name.toLowerCase().includes(k))
-      const isBumbu = (name) => ['bawang','lada','garam','gula','kecap','saos','saus','minyak','totole','kaldu','merica'].some(k => name.toLowerCase().includes(k))
+        // Lalu cek stok di background (tidak blokir tampilan)
+        Promise.all([
+          supabase.from('recipes').select('*, raw_materials(id, name, stock_qty, unit)'),
+          supabase.from('raw_materials').select('id, name, stock_qty, unit'),
+        ]).then(([recipeRes, matRes]) => {
+          const recipes = recipeRes.data || []
+          const allMaterials = matRes.data || []
 
-      const prodsWithStock = prods.map(p => {
-        const prodRecipes = recipes.filter(r => r.product_id === p.id)
-        if (prodRecipes.length === 0) return { ...p, stockReady: true } // no recipe = always available
+          // Kalau tidak ada resep sama sekali, semua produk tetap tampil
+          if (recipes.length === 0) return
 
-        // Cek bahan UTAMA saja (bukan kemasan/bumbu)
-        const utamaRecipes = prodRecipes.filter(r => {
-          const mat = r.raw_materials
-          if (!mat) return false
-          return !isKemasan(mat.name) && !isBumbu(mat.name)
-        })
+          const isKemasan = (name) => ['bowl','sendok','kresek','stiker','label','plastik','kertas','box','cup','tissue'].some(k => (name||'').toLowerCase().includes(k))
+          const isBumbu = (name) => ['bawang','lada','garam','gula','kecap','saos','saus','minyak','totole','kaldu','merica','cabe','cabai'].some(k => (name||'').toLowerCase().includes(k))
 
-        if (utamaRecipes.length === 0) return { ...p, stockReady: true } // no utama bahan = always available
+          const prodsWithStock = prods.map(p => {
+            const prodRecipes = recipes.filter(r => r.product_id === p.id)
 
-        // Semua bahan utama harus ada stoknya
-        const stockReady = utamaRecipes.every(r => {
-          const mat = r.raw_materials
-          if (!mat) return true
-          // Konversi qty_used ke satuan bahan
-          let qtyNeeded = r.qty_used
-          if (r.unit === 'gram' && mat.unit === 'kg') qtyNeeded = r.qty_used / 1000
-          else if (r.unit === 'ml' && mat.unit === 'liter') qtyNeeded = r.qty_used / 1000
-          return (mat.stock_qty || 0) >= qtyNeeded
-        })
+            // Tidak ada resep = selalu tampil
+            if (prodRecipes.length === 0) return { ...p, stockReady: true }
 
-        // Cari nama bahan utama yang habis untuk info
-        const habis = utamaRecipes
-          .filter(r => {
-            const mat = r.raw_materials
-            if (!mat) return false
-            let qtyNeeded = r.qty_used
-            if (r.unit === 'gram' && mat.unit === 'kg') qtyNeeded = r.qty_used / 1000
-            return (mat.stock_qty || 0) < qtyNeeded
+            // Cek bahan UTAMA saja
+            const utamaRecipes = prodRecipes.filter(r => {
+              const matName = r.raw_materials?.name || r.material_name || ''
+              return matName && !isKemasan(matName) && !isBumbu(matName)
+            })
+
+            // Tidak ada bahan utama di resep = selalu tampil
+            if (utamaRecipes.length === 0) return { ...p, stockReady: true }
+
+            // Cek stok masing-masing bahan utama
+            const stockReady = utamaRecipes.every(r => {
+              // Coba dari join, fallback ke allMaterials
+              let mat = r.raw_materials
+              if (!mat && r.raw_material_id) {
+                mat = allMaterials.find(m => m.id === r.raw_material_id)
+              }
+
+              // Kalau bahan tidak ditemukan di stok = anggap tersedia
+              // (bahan mungkin belum diinput stoknya)
+              if (!mat) return true
+
+              // Konversi satuan
+              let qtyNeeded = parseFloat(r.qty_used) || 0
+              if (r.unit === 'gram' && mat.unit === 'kg') qtyNeeded = qtyNeeded / 1000
+              else if (r.unit === 'kg' && mat.unit === 'gram') qtyNeeded = qtyNeeded * 1000
+              else if (r.unit === 'ml' && mat.unit === 'liter') qtyNeeded = qtyNeeded / 1000
+
+              return (parseFloat(mat.stock_qty) || 0) >= qtyNeeded
+            })
+
+            const habis = utamaRecipes
+              .filter(r => {
+                const mat = r.raw_materials || allMaterials.find(m => m.id === r.raw_material_id)
+                if (!mat) return false
+                let qtyNeeded = parseFloat(r.qty_used) || 0
+                if (r.unit === 'gram' && mat.unit === 'kg') qtyNeeded = qtyNeeded / 1000
+                return (parseFloat(mat.stock_qty) || 0) < qtyNeeded
+              })
+              .map(r => r.raw_materials?.name || r.material_name)
+              .filter(Boolean)
+
+            return { ...p, stockReady, bahanHabis: habis }
           })
-          .map(r => r.raw_materials?.name)
-          .filter(Boolean)
 
-        return { ...p, stockReady, bahanHabis: habis }
+          setProducts(prodsWithStock)
+        }).catch(() => {
+          // Kalau query stok gagal, biarkan semua produk tampil
+          setProducts(prods.map(p => ({ ...p, stockReady: true })))
+        })
       })
-
-      setProducts(prodsWithStock)
-    })
     // Load promo bundling aktif hari ini
     supabase.from('bundling_packages').select('*').eq('is_active', true).in('periode', ['harian']).then(({ data }) => {
       if (data) {
