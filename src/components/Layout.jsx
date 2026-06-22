@@ -10,7 +10,7 @@ const navItems = [
   { path: '/stok', label: 'Stok & Inventory', icon: '📦' },
   { path: '/resep', label: 'Resep', icon: '📖' },
   { path: '/hpp', label: 'Kalkulator HPP', icon: '🧮' },
-  { path: '/laporan', label: 'Laporan L/R', icon: '📊' },
+  { path: '/laporan', label: 'Laporan Keuangan', icon: '📊' },
   { path: '/target', label: 'Target Bulanan', icon: '🎯' },
   { path: '/analisa', label: 'Analisa Bisnis', icon: '💡' },
   { path: '/menu', label: 'Manajemen Menu', icon: '🍱' },
