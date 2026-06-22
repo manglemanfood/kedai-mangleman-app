@@ -69,19 +69,19 @@ export default function OrderForm() {
       category: 'ricebowl',
       label: '🎁 Beli 5 Ricebowl → Free 1 Juice!',
       freeCategory: 'minuman',
-      freeChoices: null, // null = semua minuman bisa dipilih
+      freeKeyword: 'Min 5', // filter produk yg namanya mengandung "Min 5"
       maxFreeQty: 1,
-      description: 'Pilih 1 juice gratis (Guava atau Mango)',
+      description: 'Pilih 1 juice gratis ukuran kecil',
     },
     {
       id: 'free10',
       minQty: 10,
       category: 'ricebowl',
-      label: '🎁🎁 Beli 10 Ricebowl → Free 2 Juice Strawberry!',
+      label: '🎁🎁 Beli 10 Ricebowl → Free 1 Juice!',
       freeCategory: 'minuman',
-      freeChoices: ['JUICE Strawberry'], // spesifik produk
-      maxFreeQty: 2,
-      description: 'Dapat 2 Juice Strawberry gratis!',
+      freeKeyword: 'Min 10', // filter produk yg namanya mengandung "Min 10"
+      maxFreeQty: 1,
+      description: 'Dapat 1 juice gratis ukuran kecil',
     },
   ]
   const [info, setInfo] = useState({ name: '', gedung: '', lantai: '', phone: '', catatan: '' })
@@ -537,17 +537,9 @@ export default function OrderForm() {
                   </div>
                   <button
                     onClick={() => {
-                      if (rule.freeChoices) {
-                        // Langsung tambah produk spesifik
-                        const prod = availableProducts.find(p =>
-                          rule.freeChoices.some(fc => p.name.toLowerCase().includes(fc.toLowerCase()))
-                        )
-                        if (prod) handleAddFreeItem(prod, rule)
-                      } else {
-                        // Buka modal pilih
-                        setPendingFreeRule(rule)
-                        setShowFreeModal(true)
-                      }
+                      // Selalu buka modal pilih
+                      setPendingFreeRule(rule)
+                      setShowFreeModal(true)
                     }}
                     style={{
                       background: '#fff', color: '#16A34A', border: 'none',
@@ -571,7 +563,13 @@ export default function OrderForm() {
                     <div style={{ fontSize: 13, color: '#888', marginTop: 4 }}>{pendingFreeRule.description}</div>
                   </div>
                   {availableProducts
-                    .filter(p => p.category === pendingFreeRule.freeCategory)
+                    .filter(p => {
+                      if (p.category !== pendingFreeRule.freeCategory) return false
+                      if (pendingFreeRule.freeKeyword) {
+                        return p.name.includes(pendingFreeRule.freeKeyword)
+                      }
+                      return true
+                    })
                     .map(p => (
                       <button key={p.id} onClick={() => handleAddFreeItem(p, pendingFreeRule)}
                         style={{ width: '100%', padding: '14px 16px', marginBottom: 8, background: '#F8F8F8', border: '2px solid #E5E5E5', borderRadius: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', textAlign: 'left' }}>
