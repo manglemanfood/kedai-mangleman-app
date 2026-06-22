@@ -424,7 +424,7 @@ export default function OrderForm() {
             <h3 style={{ marginBottom: 20, fontWeight: 700, fontSize: 16 }}>📝 Info Pemesanan</h3>
             {[
               { key: 'name', label: 'Nama Lengkap *', placeholder: 'Contoh: Budi Santoso', type: 'text' },
-              { key: 'gedung', label: 'Nama Gedung *', placeholder: 'Contoh: Gedung A / Tower 1', type: 'text' },
+              { key: 'gedung', label: 'Alamat (Gedung) *', placeholder: 'Contoh: Gedung A / Tower 1', type: 'text' },
               { key: 'lantai', label: 'Lantai *', placeholder: 'Contoh: 5', type: 'text' },
               { key: 'phone', label: 'No. HP (untuk konfirmasi WA)', placeholder: '08xxxxxxxxxx', type: 'tel' },
             ].map(field => (
