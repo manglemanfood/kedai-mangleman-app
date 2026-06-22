@@ -69,9 +69,9 @@ export default function OrderForm() {
       category: 'ricebowl',
       label: '🎁 Beli 5 Ricebowl → Free 1 Juice!',
       freeCategory: 'minuman',
-      freeKeyword: 'Min 5', // filter produk yg namanya mengandung "Min 5"
+      freeKeyword: 'Min 5',
       maxFreeQty: 1,
-      description: 'Pilih 1 juice gratis ukuran kecil',
+      description: 'Pilih juice gratis (ukuran kecil)',
     },
     {
       id: 'free10',
@@ -565,10 +565,8 @@ export default function OrderForm() {
                   {availableProducts
                     .filter(p => {
                       if (p.category !== pendingFreeRule.freeCategory) return false
-                      if (pendingFreeRule.freeKeyword) {
-                        return p.name.includes(pendingFreeRule.freeKeyword)
-                      }
-                      return true
+                      // Filter hanya produk free (harga 0 atau nama mengandung "(Free)")
+                      return p.price === 0 || p.name.includes('(Free)') || p.name.includes('Free')
                     })
                     .map(p => (
                       <button key={p.id} onClick={() => handleAddFreeItem(p, pendingFreeRule)}
