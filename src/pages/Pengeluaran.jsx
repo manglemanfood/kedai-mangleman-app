@@ -114,10 +114,27 @@ export default function Pengeluaran() {
       const desc = form.description.trim()
       const descLower = desc.toLowerCase()
 
-      // Cari bahan baku yang cocok berdasarkan nama
+      // Cari bahan baku yang cocok berdasarkan nama (fuzzy match)
+      const cleanDesc = descLower.replace(/[()]/g, ' ').trim() // hapus tanda kurung
+      const descWords = cleanDesc.split(/\s+/).filter(w => w.length > 2) // kata-kata dalam deskripsi
+
       const matchMat = materials.find(m => {
         const mName = m.name.toLowerCase()
-        return descLower.includes(mName) || mName.includes(descLower.split(' ')[0])
+        const mWords = mName.split(/\s+/).filter(w => w.length > 2)
+
+        // 1. Exact match
+        if (mName === cleanDesc) return true
+        // 2. Deskripsi mengandung nama bahan lengkap
+        if (cleanDesc.includes(mName)) return true
+        // 3. Nama bahan mengandung deskripsi (atau sebaliknya)
+        if (mName.includes(cleanDesc)) return true
+        // 4. Semua kata dari nama bahan ada di deskripsi
+        if (mWords.length > 0 && mWords.every(w => cleanDesc.includes(w))) return true
+        // 5. Mayoritas kata deskripsi cocok dengan nama bahan (min 2 kata)
+        const matchCount = descWords.filter(w => mName.includes(w)).length
+        if (matchCount >= 2) return true
+        if (matchCount >= 1 && mWords.length === 1 && mWords[0].length > 4) return true
+        return false
       })
 
       let matId = null
@@ -361,6 +378,34 @@ export default function Pengeluaran() {
                   💡 Harga per {form.satuan_beli}: <strong>{formatRp(Math.round(parseInt(form.amount || 0) / parseFloat(form.qty_beli || 1)))}</strong>
                 </div>
               )}
+
+              {/* Preview match bahan */}
+              {form.description && form.qty_beli && (() => {
+                const descLower = form.description.toLowerCase()
+                const cleanDesc = descLower.replace(/[()]/g, ' ').trim()
+                const descWords = cleanDesc.split(/\s+/).filter(w => w.length > 2)
+                const found = materials.find(m => {
+                  const mName = m.name.toLowerCase()
+                  const mWords = mName.split(/\s+/).filter(w => w.length > 2)
+                  if (mName === cleanDesc) return true
+                  if (mName.split('').some(() => false) || mName.split('').every(() => true)) {
+                    if (cleanDesc.includes(mName)) return true
+                  }
+                  if (cleanDesc.includes(mName)) return true
+                  if (mWords.length > 0 && mWords.every(w => cleanDesc.includes(w))) return true
+                  const matchCount = descWords.filter(w => mName.includes(w)).length
+                  if (matchCount >= 2) return true
+                  if (matchCount >= 1 && mWords.length === 1 && mWords[0].length > 4) return true
+                  return false
+                })
+                return (
+                  <div style={{ marginTop: 8, fontSize: 12, padding: '6px 10px', borderRadius: 6, background: found ? '#E8F5E0' : '#FFF3D6', color: found ? '#2D5016' : '#C8881A' }}>
+                    {found
+                      ? `✅ Cocok dengan: "${found.name}" (stok: ${found.stock_qty} ${found.unit})`
+                      : `⚠️ Tidak ditemukan di Stok — akan dibuat bahan baru jika diceklis`}
+                  </div>
+                )
+              })()}
 
               {/* Toggle sync stok */}
               {form.qty_beli && (
