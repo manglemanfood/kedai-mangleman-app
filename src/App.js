@@ -15,6 +15,7 @@ import AnalisaBisnis from './pages/AnalisaBisnis'
 import ManajemenMenu from './pages/ManajemenMenu'
 import ImportCSV from './pages/ImportCSV'
 import Bundling from './pages/Bundling'
+import Dapur from './pages/Dapur'
 import Login from './pages/Login'
 import Layout from './components/Layout'
 import './App.css'
@@ -61,6 +62,7 @@ export default function App() {
           <Route path="/menu" element={<PrivateRoute><Layout><ManajemenMenu /></Layout></PrivateRoute>} />
           <Route path="/import" element={<PrivateRoute><Layout><ImportCSV /></Layout></PrivateRoute>} />
         <Route path="/bundling" element={<PrivateRoute><Layout><Bundling /></Layout></PrivateRoute>} />
+        <Route path="/dapur" element={<PrivateRoute><Layout><Dapur /></Layout></PrivateRoute>} />
         </Routes>
     </BrowserRouter>
   )
