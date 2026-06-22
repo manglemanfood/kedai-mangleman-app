@@ -201,9 +201,9 @@ export default function OrderForm() {
     return next
   })
 
-  // Hitung qty ricebowl di cart
+  // Hitung qty ricebowl di cart (case-insensitive category check)
   const ricebowlQty = availableProducts
-    .filter(p => p.category === 'ricebowl')
+    .filter(p => (p.category || '').toLowerCase() === 'ricebowl')
     .reduce((s, p) => s + (cart[p.id] || 0), 0)
 
   // Cek aturan free item yang berlaku
@@ -715,13 +715,20 @@ export default function OrderForm() {
                 </div>
               ))}
               {freeItems.map((fi, i) => (
-                <div key={`free-${i}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #F0EDE8', fontSize: 14 }}>
-                  <span>🆓 {fi.product.name} <span style={{ color: '#888' }}>x{fi.qty}</span>
-                    <span style={{ display: 'block', fontSize: 11, color: '#16A34A' }}>GRATIS! (nilai {formatHarga(fi.originalPrice * fi.qty)})</span>
+                <div key={`free-${i}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #F0EDE8', fontSize: 14, background: '#F0FDF4', margin: '0 -4px', padding: '8px 4px', borderRadius: 6 }}>
+                  <span>
+                    <span style={{ background: '#16A34A', color: '#fff', fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 10, marginRight: 6 }}>FREE</span>
+                    {fi.product.name} <span style={{ color: '#888' }}>x{fi.qty}</span>
+                    <span style={{ display: 'block', fontSize: 11, color: '#16A34A', marginTop: 2 }}>🎁 Hadiah {ricebowlQty} ricebowl (nilai {formatHarga(fi.originalPrice * fi.qty)})</span>
                   </span>
-                  <span style={{ fontWeight: 600, color: '#16A34A' }}>Rp 0</span>
+                  <span style={{ fontWeight: 700, color: '#16A34A' }}>GRATIS!</span>
                 </div>
               ))}
+              {activeRules.length > 0 && freeItems.length === 0 && (
+                <div style={{ padding: '8px', background: '#FFF3D6', borderRadius: 8, fontSize: 13, color: '#C8881A', textAlign: 'center' }}>
+                  ⚠️ Kamu belum pilih juice gratis! Scroll ke atas atau klik Edit.
+                </div>
+              )}
               {cartItems.map(p => (
                 <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #F0EDE8', fontSize: 14 }}>
                   <span>{p.name} <span style={{ color: '#888' }}>x{cart[p.id]}</span></span>
@@ -736,6 +743,40 @@ export default function OrderForm() {
               <span style={{ fontSize: 18 }}>💬</span>
               <span>Setelah pesan, kamu akan diarahkan konfirmasi via <strong>WhatsApp</strong>.</span>
             </div>
+            {/* FREE ITEM di konfirmasi */}
+            {activeRules.map(rule => {
+              const chosen = freeItems.find(fi => fi.ruleId === rule.id)
+              return (
+                <div key={rule.id} style={{
+                  background: chosen ? '#E8F5E0' : '#FFF3D6',
+                  border: `1.5px solid ${chosen ? '#16A34A' : '#E8A838'}`,
+                  borderRadius: 12, padding: '12px 14px', marginBottom: 12,
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: chosen ? '#16A34A' : '#C8881A' }}>
+                      {rule.label}
+                    </div>
+                    {chosen ? (
+                      <div style={{ fontSize: 13, color: '#2D5016', marginTop: 3 }}>
+                        🆓 {chosen.product.name} x{chosen.qty} — <strong>GRATIS!</strong>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 12, color: '#C8881A', marginTop: 3 }}>
+                        ⚠️ Kamu belum pilih juice gratis! Klik ← Edit untuk pilih.
+                      </div>
+                    )}
+                  </div>
+                  {!chosen && (
+                    <button onClick={() => setStep(2)}
+                      style={{ background: '#E8A838', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontWeight: 700, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', marginLeft: 10 }}>
+                      Pilih Juice →
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+
             {error && <div style={{ background: '#FFE8E8', color: '#C0392B', padding: '10px', borderRadius: 8, marginBottom: 12, fontSize: 13 }}>{error}</div>}
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={() => setStep(2)} style={{ flex: 1, padding: 12, background: '#F0EDE8', color: '#666', border: 'none', borderRadius: 10, fontWeight: 600, cursor: 'pointer' }}>← Edit</button>
