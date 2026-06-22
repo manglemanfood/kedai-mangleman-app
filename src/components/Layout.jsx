@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: '🏠' },
   { path: '/rekap-order', label: 'Rekap Order', icon: '📋' },
+  { path: '/dapur', label: 'Dashboard Dapur', icon: '👨‍🍳' },
   { path: '/crm', label: 'CRM Pelanggan', icon: '👥' },
   { path: '/pengeluaran', label: 'Pengeluaran', icon: '💸' },
   { path: '/stok', label: 'Stok & Inventory', icon: '📦' },
