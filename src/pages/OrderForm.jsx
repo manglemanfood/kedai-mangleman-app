@@ -29,7 +29,7 @@ function buildWAMessage(info, cartItems, cart, promoCart, freeItems, total, orde
     `  • 🎁 ${pc.promo.name} x${pc.qty} = ${formatHarga(pc.promo.bundle_price * pc.qty)} (hemat ${formatHarga(pc.promo.diskon * pc.qty)})`
   )
   const freeItemLines = freeItems.map(fi =>
-    `  • 🆓 ${fi.product.name} x${fi.qty} = GRATIS! (nilai ${formatHarga(fi.originalPrice * fi.qty)})`
+    `  • 🆓 ${fi.product.name} x${fi.qty} = GRATIS! (nilai ${formatHarga(fi.originalPrice * fi.qty)})\n    📍 Berlaku untuk 1 alamat/gedung yang sama`
   )
   const items = [...promoItems, ...regularItems, ...freeItemLines].join('\n')
   return encodeURIComponent(
@@ -62,28 +62,7 @@ export default function OrderForm() {
   const [pendingFreeRule, setPendingFreeRule] = useState(null)
 
   // Aturan free item berdasarkan qty ricebowl
-  const FREE_RULES = [
-    {
-      id: 'free5',
-      minQty: 5,
-      category: 'ricebowl',
-      label: '🎁 Beli 5 Ricebowl → Free 1 Juice!',
-      freeCategory: 'minuman',
-      freeKeyword: 'Min 5',
-      maxFreeQty: 1,
-      description: 'Pilih juice gratis (ukuran kecil)',
-    },
-    {
-      id: 'free10',
-      minQty: 10,
-      category: 'ricebowl',
-      label: '🎁🎁 Beli 10 Ricebowl → Free 1 Juice!',
-      freeCategory: 'minuman',
-      freeKeyword: 'Min 10', // filter produk yg namanya mengandung "Min 10"
-      maxFreeQty: 1,
-      description: 'Dapat 1 juice gratis ukuran kecil',
-    },
-  ]
+  // FREE_RULES dibuat dinamis di dalam komponen (pakai ricebowlQty)
   const [info, setInfo] = useState({ name: '', gedung: '', lantai: '', phone: '', catatan: '' })
   const [loading, setLoading] = useState(false)
   const [orderNum, setOrderNum] = useState('')
@@ -207,8 +186,34 @@ export default function OrderForm() {
     .filter(p => (p.category || '').toLowerCase() === 'ricebowl')
     .reduce((s, p) => s + (cart[p.id] || 0), 0)
 
-  // Cek aturan free item yang berlaku
-  const activeRules = FREE_RULES.filter(r => ricebowlQty >= r.minQty)
+  // FREE_RULES dinamis berdasarkan ricebowlQty
+  const FREE_RULES = [
+    {
+      id: 'free5',
+      minQty: 5, maxQty: 9,
+      category: 'ricebowl',
+      label: `🎁 Beli ${ricebowlQty} Ricebowl → Free ${ricebowlQty} Juice Guava!`,
+      freeCategory: 'minuman',
+      freeKeyword: 'Min 5',
+      maxFreeQty: ricebowlQty,
+      description: `Gratis ${ricebowlQty} Juice Guava ukuran kecil · Berlaku untuk 1 alamat/gedung yang sama`,
+      fixedProduct: true,
+    },
+    {
+      id: 'free10',
+      minQty: 10, maxQty: 999,
+      category: 'ricebowl',
+      label: `🎁🎁 Beli ${ricebowlQty} Ricebowl → Free ${ricebowlQty} Juice!`,
+      freeCategory: 'minuman',
+      freeKeyword: null,
+      maxFreeQty: ricebowlQty,
+      description: `Gratis ${ricebowlQty} Juice (Guava/Mango) ukuran kecil · Berlaku untuk 1 alamat/gedung yang sama`,
+      fixedProduct: false,
+    },
+  ]
+
+  // Cek aturan free item - rule yang sesuai range qty
+  const activeRules = FREE_RULES.filter(r => ricebowlQty >= r.minQty && ricebowlQty <= r.maxQty)
 
   const cartItems = availableProducts.filter(p => cart[p.id])
   const regularTotal = cartItems.reduce((sum, p) => sum + p.price * (cart[p.id] || 0), 0)
@@ -538,9 +543,19 @@ export default function OrderForm() {
                   </div>
                   <button
                     onClick={() => {
-                      // Selalu buka modal pilih
-                      setPendingFreeRule(rule)
-                      setShowFreeModal(true)
+                      if (rule.fixedProduct) {
+                        // free5: otomatis pilih Juice Guava (Free) | Min 5
+                        const prod = availableProducts.find(p =>
+                          p.category === rule.freeCategory &&
+                          (p.price === 0 || p.name.includes('(Free)')) &&
+                          p.name.toLowerCase().includes('guava')
+                        )
+                        if (prod) handleAddFreeItem(prod, rule)
+                      } else {
+                        // free10: buka modal pilih
+                        setPendingFreeRule(rule)
+                        setShowFreeModal(true)
+                      }
                     }}
                     style={{
                       background: '#fff', color: '#16A34A', border: 'none',
@@ -566,8 +581,10 @@ export default function OrderForm() {
                   {availableProducts
                     .filter(p => {
                       if (p.category !== pendingFreeRule.freeCategory) return false
-                      // Filter hanya produk free (harga 0 atau nama mengandung "(Free)")
-                      return p.price === 0 || p.name.includes('(Free)') || p.name.includes('Free')
+                      if (!(p.price === 0 || p.name.includes('(Free)'))) return false
+                      // free5: hanya Guava (Min 5), free10: semua free product
+                      if (pendingFreeRule.freeKeyword) return p.name.includes(pendingFreeRule.freeKeyword)
+                      return true
                     })
                     .map(p => (
                       <button key={p.id} onClick={() => handleAddFreeItem(p, pendingFreeRule)}
@@ -721,7 +738,8 @@ export default function OrderForm() {
                   <span>
                     <span style={{ background: '#16A34A', color: '#fff', fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 10, marginRight: 6 }}>FREE</span>
                     {fi.product.name} <span style={{ color: '#888' }}>x{fi.qty}</span>
-                    <span style={{ display: 'block', fontSize: 11, color: '#16A34A', marginTop: 2 }}>🎁 Hadiah {ricebowlQty} ricebowl (nilai {formatHarga(fi.originalPrice * fi.qty)})</span>
+                    <span style={{ display: 'block', fontSize: 11, color: '#16A34A', marginTop: 2 }}>🎁 Hadiah {ricebowlQty} ricebowl · ukuran kecil</span>
+                  <span style={{ display: 'block', fontSize: 10, color: '#888', marginTop: 1 }}>📍 Berlaku untuk 1 alamat/gedung yang sama</span>
                   </span>
                   <span style={{ fontWeight: 700, color: '#16A34A' }}>GRATIS!</span>
                 </div>
@@ -762,6 +780,7 @@ export default function OrderForm() {
                     {chosen ? (
                       <div style={{ fontSize: 13, color: '#2D5016', marginTop: 3 }}>
                         🆓 {chosen.product.name} x{chosen.qty} — <strong>GRATIS!</strong>
+                        <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>📍 Berlaku untuk 1 alamat/gedung yang sama</div>
                       </div>
                     ) : (
                       <div style={{ fontSize: 12, color: '#C8881A', marginTop: 3 }}>
