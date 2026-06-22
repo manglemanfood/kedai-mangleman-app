@@ -186,8 +186,9 @@ export default function OrderForm() {
   // Hanya tampilkan produk yang stoknya ready
   const availableProducts = products.filter(p => p.stockReady !== false)
 
-  // Group by category
-  const grouped = availableProducts.reduce((acc, p) => {
+  // Group by category - exclude free products (price=0 or name contains Free)
+  const regularProducts = availableProducts.filter(p => p.price > 0 && !p.name.includes('(Free)'))
+  const grouped = regularProducts.reduce((acc, p) => {
     if (!acc[p.category]) acc[p.category] = []
     acc[p.category].push(p)
     return acc
@@ -610,7 +611,12 @@ export default function OrderForm() {
             )}
 
             {/* Menu list */}
-            {Object.entries(grouped).map(([cat, items]) => {
+            {Object.entries(grouped)
+              .sort(([a], [b]) => {
+                const order = ['ricebowl','mie','dimsum','snack','minuman']
+                return (order.indexOf(a) ?? 99) - (order.indexOf(b) ?? 99)
+              })
+              .map(([cat, items]) => {
               const isDropdown = DROPDOWN_CATEGORIES.includes(cat)
               return (
                 <div key={cat} style={{ background: '#fff', borderRadius: 16, padding: '1.25rem', marginBottom: 12, boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}>
