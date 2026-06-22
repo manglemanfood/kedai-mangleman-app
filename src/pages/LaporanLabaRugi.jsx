@@ -63,20 +63,32 @@ export default function LaporanLabaRugi() {
     const toDt   = to   + 'T23:59:59+07:00'
 
     const [ordersRes, itemsRes, expRes, productsRes] = await Promise.all([
-      supabase.from('orders').select('*').gte('created_at', fromDt).lte('created_at', toDt),
-      supabase.from('order_items').select('*, orders!inner(created_at, status)').gte('orders.created_at', fromDt).lte('orders.created_at', toDt),
+      supabase.from('orders').select('*').or(
+          `and(delivery_date.gte.${from},delivery_date.lte.${to}),` +
+          `and(delivery_date.is.null,created_at.gte.${fromDt},created_at.lte.${toDt})`
+        ),
+      supabase.from('order_items').select('*, orders!inner(created_at, status, delivery_date)'),
       supabase.from('expenses').select('*').gte('expense_date', from).lte('expense_date', to),
       supabase.from('products').select('id, name, hpp, price'),
     ])
 
-    const validOrders = (ordersRes.data || []).filter(o => o.status !== 'Batal')
+    // Filter valid orders berdasarkan delivery_date (fallback ke created_at)
+    const validOrders = (ordersRes.data || []).filter(o => {
+      if (o.status === 'Batal') return false
+      const delivDate = o.delivery_date || o.created_at?.slice(0,10)
+      return delivDate >= from && delivDate <= to
+    })
     const totalRevenue = validOrders.reduce((s, o) => s + (o.total_amount || 0), 0)
 
     // HPP = sum(qty * hpp per produk)
     const prodMap = {}
     ;(productsRes.data || []).forEach(p => { prodMap[p.id] = p })
     const totalHPP = (itemsRes.data || [])
-      .filter(i => i.orders?.status !== 'Batal')
+      .filter(i => {
+        if (i.orders?.status === 'Batal') return false
+        const delivDate = i.orders?.delivery_date || i.orders?.created_at?.slice(0,10)
+        return delivDate >= from && delivDate <= to
+      })
       .reduce((s, i) => {
         const prod = prodMap[i.product_id]
         return s + (prod?.hpp || 0) * (i.quantity || 0)
@@ -207,6 +219,7 @@ export default function LaporanLabaRugi() {
             📊 Laporan Keuangan
           </h1>
           <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>Kedai MangLeman · {periodLabel}</p>
+        <p style={{ fontSize: 12, color: '#2563EB' }}>📅 Berdasarkan tanggal pengiriman (delivery date)</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={handlePrint}
