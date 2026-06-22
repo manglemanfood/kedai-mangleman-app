@@ -36,8 +36,7 @@ export default function Dapur() {
     const [ordersRes, recipesRes, matsRes, prodsRes] = await Promise.all([
       supabase.from('orders')
         .select('*, order_items(*)')
-        .gte('created_at', date + 'T00:00:00+07:00')
-        .lte('created_at', date + 'T23:59:59+07:00')
+        .or(`delivery_date.eq.${date},and(delivery_date.is.null,created_at.gte.${date}T00:00:00+07:00,created_at.lte.${date}T23:59:59+07:00)`)
         .neq('status', 'Batal'),
       supabase.from('recipes').select('*'),
       supabase.from('raw_materials').select('*'),
@@ -169,6 +168,11 @@ export default function Dapur() {
       </div>
 
       {/* Realtime badge */}
+      <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
+        📅 Menampilkan pesanan dengan <strong>tanggal pengiriman {new Date(date + 'T00:00:00').toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })}</strong>
+        <span style={{ color: '#2563EB', marginLeft: 6 }}>(termasuk order tanpa tanggal kirim yang dibuat hari ini)</span>
+      </div>
+
       {isToday && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, padding: '8px 14px', background: '#E8F5E0', borderRadius: 10 }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#16A34A', animation: 'pulse 2s infinite', flexShrink: 0 }} />
