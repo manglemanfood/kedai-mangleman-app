@@ -42,7 +42,7 @@ export default function Dashboard() {
     const [ordersRes, expensesRes, itemsRes, recentRes] = await Promise.all([
       supabase.from('orders').select('total_amount,status,created_at').gte('created_at', fromDt).lte('created_at', toDt),
       supabase.from('expenses').select('amount').gte('expense_date', from).lte('expense_date', to),
-      supabase.from('order_items').select('product_name,quantity,subtotal,orders!inner(created_at,status)').gte('orders.created_at', fromDt).lte('orders.created_at', toDt),
+      supabase.from('order_items').select('product_name,quantity,subtotal,orders!inner(created_at,status,delivery_date)'),
       supabase.from('orders').select('*, order_items(*)').order('created_at', { ascending: false }).limit(6),
     ])
 
