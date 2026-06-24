@@ -67,6 +67,7 @@ export default function OrderForm() {
   const [step, setStep] = useState(1)
   const [products, setProducts] = useState([])
   const [promos, setPromos] = useState([])
+  const [promosBesok, setPromosBesok] = useState([])
   const [cart, setCart] = useState({})
   const [promoCart, setPromoCart] = useState([]) // [{promo, qty}]
   const [freeItems, setFreeItems] = useState([])
@@ -162,16 +163,28 @@ export default function OrderForm() {
           setProducts(prods.map(p => ({ ...p, stockReady: true })))
         })
       })
-    // Load promo bundling aktif hari ini
+    // Load promo bundling aktif hari ini (WIB UTC+7)
     supabase.from('bundling_packages').select('*').eq('is_active', true).in('periode', ['harian']).then(({ data }) => {
       if (data) {
-        const today = new Date().toISOString().split('T')[0]
+        // Gunakan timezone WIB (UTC+7)
+        const nowWIB = new Date(Date.now() + 7 * 60 * 60 * 1000)
+        const todayWIB = nowWIB.toISOString().split('T')[0]
+        const tomorrowWIB = new Date(nowWIB.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
         const active = data.filter(b => {
-          if (b.start_date && b.start_date > today) return false
-          if (b.end_date && b.end_date < today) return false
+          if (b.start_date && b.start_date > todayWIB) return false
+          if (b.end_date && b.end_date < todayWIB) return false
           return true
         })
         setPromos(active)
+
+        // Cek promo besok (H-1 reminder)
+        const tomorrow = data.filter(b => {
+          if (!b.is_active) return false
+          if (b.start_date && b.start_date === tomorrowWIB) return true
+          return false
+        })
+        setPromosBesok(tomorrow)
       }
     })
   }, [])
@@ -567,6 +580,24 @@ export default function OrderForm() {
                 <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)' }}>
                   <strong style={{ color: '#fff' }}>{products.filter(p => p.stockReady === false).length} menu</strong> tidak tersedia hari ini karena stok bahan habis.
                 </div>
+              </div>
+            )}
+
+            {/* H-1 REMINDER - Promo Besok */}
+            {promosBesok.length > 0 && (
+              <div style={{ background: 'linear-gradient(135deg, #1A2E0A, #2D5016)', borderRadius: 14, padding: '12px 16px', marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 4px 15px rgba(0,0,0,0.2)' }}>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 14, color: '#E8A838' }}>
+                    🔔 Promo Spesial Mulai Besok!
+                  </div>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)', marginTop: 3 }}>
+                    {promosBesok.map(p => p.name).join(', ')} — jangan sampai kelewatan ya!
+                  </div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>
+                    Pesan sekarang untuk pengiriman besok 📅
+                  </div>
+                </div>
+                <div style={{ fontSize: 28 }}>⏰</div>
               </div>
             )}
 
