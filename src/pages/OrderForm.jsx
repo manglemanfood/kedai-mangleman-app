@@ -587,61 +587,78 @@ export default function OrderForm() {
 
             {/* H-1 REMINDER - Promo Besok */}
             {promosBesok.length > 0 && (
-              <div style={{ background: 'linear-gradient(135deg, #1A2E0A, #2D5016)', borderRadius: 14, padding: '14px 16px', marginBottom: 10, boxShadow: '0 4px 15px rgba(0,0,0,0.3)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                  <div>
-                    <div style={{ fontWeight: 800, fontSize: 15, color: '#E8A838' }}>
-                      🔔 Ada Promo Spesial Besok!
+              <div style={{ position: 'relative', borderRadius: 18, marginBottom: 12, overflow: 'hidden', boxShadow: '0 8px 30px rgba(0,0,0,0.35)' }}>
+                {/* Background gradient */}
+                <div style={{ background: 'linear-gradient(135deg, #0F2027, #203A43, #2C5364)', padding: '16px 16px 10px' }}>
+                  {/* Header */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ background: '#E8A838', borderRadius: 20, padding: '3px 10px', fontSize: 11, fontWeight: 800, color: '#1A1A1A' }}>⏰ BESOK</span>
+                        <span style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 20, padding: '3px 10px', fontSize: 11, fontWeight: 700, color: '#fff' }}>Pre-Order Dibuka!</span>
+                      </div>
+                      <div style={{ fontWeight: 900, fontSize: 18, color: '#fff', marginTop: 6, letterSpacing: 0.3 }}>
+                        🔔 Promo Spesial Besok!
+                      </div>
+                      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', marginTop: 2 }}>
+                        Pesan sekarang · Dikirim besok · Harga promo dijamin! 🎉
+                      </div>
                     </div>
-                    <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.9)', marginTop: 4 }}>
-                      {promosBesok.map(p => p.name).join(', ')}
-                    </div>
-                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 3 }}>
-                      Pesan sekarang, dikirim besok — harga promo berlaku! 🎉
-                    </div>
+                    <div style={{ fontSize: 44, opacity: 0.9 }}>🛎️</div>
                   </div>
-                  <div style={{ fontSize: 28, marginLeft: 10 }}>⏰</div>
+
+                  {/* Promo cards */}
+                  {promosBesok.map(promo => {
+                    const items = typeof promo.items === 'string' ? JSON.parse(promo.items) : promo.items || []
+                    const pct = promo.normal_price > 0 ? Math.round((promo.diskon / promo.normal_price) * 100) : 0
+                    const alreadyAdded = promoCart.some(pc => pc.promo.id === promo.id)
+                    return (
+                      <div key={promo.id} style={{ background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(10px)', borderRadius: 12, padding: '12px', marginBottom: 10, border: '1px solid rgba(255,255,255,0.15)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                              <span style={{ fontWeight: 800, fontSize: 15, color: '#fff' }}>{promo.tag || '🎁'} {promo.name}</span>
+                              <span style={{ background: '#DC2626', color: '#fff', fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 20 }}>-{pct}%</span>
+                            </div>
+                            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>
+                              {items.map((it, i) => <span key={i}>{i > 0 ? <span style={{ margin: '0 4px', opacity: 0.5 }}>+</span> : ''}{it.qty > 1 ? `${it.qty}× ` : ''}{it.name}</span>)}
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'right', marginLeft: 10 }}>
+                            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textDecoration: 'line-through' }}>Rp {Number(promo.normal_price).toLocaleString('id-ID')}</div>
+                            <div style={{ fontSize: 20, fontWeight: 900, color: '#E8A838' }}>Rp {Number(promo.bundle_price).toLocaleString('id-ID')}</div>
+                            <div style={{ fontSize: 10, color: '#4ADE80', fontWeight: 700 }}>Hemat Rp {Number(promo.diskon).toLocaleString('id-ID')}</div>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            const nowWIB = new Date(Date.now() + 7*60*60*1000)
+                            const besok = new Date(nowWIB.getTime() + 24*60*60*1000).toISOString().split('T')[0]
+                            setDeliveryDate(besok)
+                            if (!alreadyAdded) addPromoToCart(promo)
+                          }}
+                          style={{
+                            width: '100%', padding: '11px', borderRadius: 10,
+                            background: alreadyAdded
+                              ? 'linear-gradient(135deg, #16A34A, #15803D)'
+                              : 'linear-gradient(135deg, #E8A838, #C8881A)',
+                            border: 'none', color: '#fff',
+                            fontWeight: 800, fontSize: 14, cursor: 'pointer',
+                            boxShadow: alreadyAdded ? '0 4px 15px rgba(22,163,74,0.4)' : '0 4px 15px rgba(232,168,56,0.4)',
+                            letterSpacing: 0.3,
+                          }}>
+                          {alreadyAdded
+                            ? '✅ Paket Ditambahkan — Dikirim Besok!'
+                            : '🛒 Pesan Paket Ini untuk Besok →'}
+                        </button>
+                      </div>
+                    )
+                  })}
                 </div>
-                {/* Tampilkan item promo besok */}
-                {promosBesok.map(promo => {
-                  const items = typeof promo.items === 'string' ? JSON.parse(promo.items) : promo.items || []
-                  const pct = promo.normal_price > 0 ? Math.round((promo.diskon / promo.normal_price) * 100) : 0
-                  const alreadyAdded = promoCart.some(pc => pc.promo.id === promo.id)
-                  return (
-                    <div key={promo.id} style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 10, padding: '10px 12px', marginBottom: 8 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                        <div>
-                          <span style={{ fontWeight: 700, fontSize: 14, color: '#fff' }}>{promo.tag || '🎁'} {promo.name}</span>
-                          <span style={{ marginLeft: 8, background: '#DC2626', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 6 }}>-{pct}%</span>
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', textDecoration: 'line-through' }}>Rp {Number(promo.normal_price).toLocaleString('id-ID')}</div>
-                          <div style={{ fontSize: 15, fontWeight: 800, color: '#E8A838' }}>Rp {Number(promo.bundle_price).toLocaleString('id-ID')}</div>
-                        </div>
-                      </div>
-                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginBottom: 8 }}>
-                        {items.map((it, i) => <span key={i}>{i > 0 ? ' + ' : ''}{it.qty > 1 ? `${it.qty}x ` : ''}{it.name}</span>)}
-                      </div>
-                      <button
-                        onClick={() => {
-                          // Set delivery date ke besok
-                          const nowWIB = new Date(Date.now() + 7*60*60*1000)
-                          const besok = new Date(nowWIB.getTime() + 24*60*60*1000).toISOString().split('T')[0]
-                          setDeliveryDate(besok)
-                          // Tambah promo ke cart
-                          if (!alreadyAdded) addPromoToCart(promo)
-                        }}
-                        style={{
-                          width: '100%', padding: '9px', borderRadius: 8,
-                          background: alreadyAdded ? '#16A34A' : '#E8A838',
-                          border: 'none', color: '#fff',
-                          fontWeight: 700, fontSize: 13, cursor: 'pointer'
-                        }}>
-                        {alreadyAdded ? '✅ Ditambahkan — Kirim Besok!' : '🛒 Pesan Paket Ini untuk Besok'}
-                      </button>
-                    </div>
-                  )
-                })}
+
+                {/* Bottom accent bar */}
+                <div style={{ height: 4, background: 'linear-gradient(90deg, #E8A838, #16A34A, #E8A838)', backgroundSize: '200% 100%' }} />
               </div>
             )}
 
