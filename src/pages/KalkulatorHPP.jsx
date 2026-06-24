@@ -83,10 +83,30 @@ export default function KalkulatorHPP() {
     const details = recs.map(r => {
       const mat = materials[r.raw_material_id]
       if (!mat) return { name: r.material_name, cost: 0, qty: r.qty_used, unit: r.unit }
+      // Konversi satuan resep → satuan beli dengan tabel konversi lengkap
+      const KONVERSI_HPP = {
+        'sdt->gram': 5, 'sdm->gram': 15, 'cup->gram': 120, 'siung->gram': 5,
+        'sdt->ml': 5, 'sdm->ml': 15, 'cup->ml': 240,
+        'gram->kg': 0.001, 'kg->gram': 1000,
+        'ml->liter': 0.001, 'liter->ml': 1000,
+      }
+      const CAIR_KW = ['saos','saus','kecap','minyak','oil','air','cuka','susu','santan','kaldu']
+      const matCair = CAIR_KW.some(k => (mat.name||'').toLowerCase().includes(k))
+      const baseUnit = matCair ? 'ml' : 'gram'
+
       let qty = r.qty_used
-      if (r.unit === 'gram' && mat.unit === 'kg') qty = r.qty_used / 1000
-      else if (r.unit === 'ml' && mat.unit === 'liter') qty = r.qty_used / 1000
-      const cost = qty * mat.last_price
+      if (r.unit !== mat.unit) {
+        const directKey = `${r.unit}->${mat.unit}`
+        if (KONVERSI_HPP[directKey]) {
+          qty = r.qty_used * KONVERSI_HPP[directKey]
+        } else {
+          // via base unit
+          const toBase = KONVERSI_HPP[`${r.unit}->${baseUnit}`]
+          const fromBase = KONVERSI_HPP[`${baseUnit}->${mat.unit}`]
+          if (toBase && fromBase) qty = r.qty_used * toBase * fromBase
+        }
+      }
+      const cost = qty * (mat.hpp_fifo > 0 ? mat.hpp_fifo : mat.last_price)
       total += cost
       return { name: r.material_name, cost, qty: r.qty_used, unit: r.unit }
     })
