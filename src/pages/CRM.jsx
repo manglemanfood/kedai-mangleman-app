@@ -83,33 +83,42 @@ export default function CRM() {
     if (!giftSelected || !giftModal) return
     setGiftSaving(true)
 
-    // Buat order gift dengan total 0
-    const { data: order } = await supabase.from('orders').insert({
-      customer_id: giftModal.id,
-      customer_name: giftModal.name,
-      gedung: giftModal.gedung,
-      lantai: giftModal.lantai,
-      phone: giftModal.phone,
-      catatan: `🎁 Hadiah dari admin: ${giftNotes}`,
-      total_amount: 0,
-      status: 'Baru',
-    }).select().single()
+    try {
+      // Buat order gift dengan total 0
+      const { data: order, error: orderErr } = await supabase.from('orders').insert({
+        customer_id: giftModal.id,
+        customer_name: giftModal.name,
+        gedung: giftModal.gedung || '-',
+        lantai: giftModal.lantai || '-',
+        phone: giftModal.phone || '',
+        catatan: `🎁 Hadiah dari admin: ${giftNotes || giftSelected.name}`,
+        total_amount: 0,
+        status: 'Selesai', // langsung selesai karena admin yang kasih
+      }).select().single()
 
-    if (order) {
-      await supabase.from('order_items').insert({
+      if (orderErr) throw new Error('Gagal buat order: ' + orderErr.message)
+
+      // Insert order_items
+      const { error: itemErr } = await supabase.from('order_items').insert({
         order_id: order.id,
         product_id: giftSelected.id,
-        product_name: `🎁 ${giftSelected.name} (Hadiah)`,
+        product_name: giftSelected.name,
         quantity: 1,
         price: 0,
         subtotal: 0,
-        notes: `Hadiah untuk pelanggan setia: ${giftModal.name}`,
       })
-    }
 
-    setGiftSaving(false)
-    setGiftModal(null)
-    alert(`✅ Hadiah ${giftSelected.name} berhasil dikirim untuk ${giftModal.name}!`)
+      if (itemErr) throw new Error('Gagal insert item: ' + itemErr.message)
+
+      setGiftSaving(false)
+      setGiftModal(null)
+      alert(`✅ Hadiah ${giftSelected.name} berhasil dikirim untuk ${giftModal.name}!`)
+      
+    } catch (err) {
+      setGiftSaving(false)
+      alert('❌ Error: ' + err.message)
+      console.error(err)
+    }
   }
 
   return (
@@ -187,33 +196,42 @@ export default function CRM() {
     if (!giftSelected || !giftModal) return
     setGiftSaving(true)
 
-    // Buat order gift dengan total 0
-    const { data: order } = await supabase.from('orders').insert({
-      customer_id: giftModal.id,
-      customer_name: giftModal.name,
-      gedung: giftModal.gedung,
-      lantai: giftModal.lantai,
-      phone: giftModal.phone,
-      catatan: `🎁 Hadiah dari admin: ${giftNotes}`,
-      total_amount: 0,
-      status: 'Baru',
-    }).select().single()
+    try {
+      // Buat order gift dengan total 0
+      const { data: order, error: orderErr } = await supabase.from('orders').insert({
+        customer_id: giftModal.id,
+        customer_name: giftModal.name,
+        gedung: giftModal.gedung || '-',
+        lantai: giftModal.lantai || '-',
+        phone: giftModal.phone || '',
+        catatan: `🎁 Hadiah dari admin: ${giftNotes || giftSelected.name}`,
+        total_amount: 0,
+        status: 'Selesai', // langsung selesai karena admin yang kasih
+      }).select().single()
 
-    if (order) {
-      await supabase.from('order_items').insert({
+      if (orderErr) throw new Error('Gagal buat order: ' + orderErr.message)
+
+      // Insert order_items
+      const { error: itemErr } = await supabase.from('order_items').insert({
         order_id: order.id,
         product_id: giftSelected.id,
-        product_name: `🎁 ${giftSelected.name} (Hadiah)`,
+        product_name: giftSelected.name,
         quantity: 1,
         price: 0,
         subtotal: 0,
-        notes: `Hadiah untuk pelanggan setia: ${giftModal.name}`,
       })
-    }
 
-    setGiftSaving(false)
-    setGiftModal(null)
-    alert(`✅ Hadiah ${giftSelected.name} berhasil dikirim untuk ${giftModal.name}!`)
+      if (itemErr) throw new Error('Gagal insert item: ' + itemErr.message)
+
+      setGiftSaving(false)
+      setGiftModal(null)
+      alert(`✅ Hadiah ${giftSelected.name} berhasil dikirim untuk ${giftModal.name}!`)
+      
+    } catch (err) {
+      setGiftSaving(false)
+      alert('❌ Error: ' + err.message)
+      console.error(err)
+    }
   }
 
   return (
@@ -285,8 +303,10 @@ export default function CRM() {
                   </div>
                   <div style={{ color: 'var(--text-muted)', marginTop: 3, fontSize: 11 }}>
                     {itemNames.length > 0
-                      ? itemNames.map(n => n.replace('🎁 ', '')).join(', ')
-                      : o.catatan || '-'}
+                      ? itemNames.map(n => n.replace('🎁 ', '').replace(' (Hadiah)', '')).join(', ')
+                      : isGift
+                        ? (o.catatan?.replace('🎁 Hadiah dari admin:', '').trim() || 'Hadiah dari admin')
+                        : '-'}
                   </div>
                 </div>
               )
