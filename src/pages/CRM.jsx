@@ -12,6 +12,11 @@ const SEGMENT_CONFIG = {
 
 export default function CRM() {
   const [customers, setCustomers] = useState([])
+  const [giftModal, setGiftModal] = useState(null) // customer yang mau dikasih hadiah
+  const [giftProducts, setGiftProducts] = useState([])
+  const [giftSelected, setGiftSelected] = useState(null)
+  const [giftNotes, setGiftNotes] = useState('')
+  const [giftSaving, setGiftSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('Semua')
   const [search, setSearch] = useState('')
@@ -61,6 +66,51 @@ export default function CRM() {
   })
 
   const summary = { total: customers.length, vip: customers.filter(c => c.segment === 'VIP').length, loyal: customers.filter(c => c.segment === 'Loyal').length, baru: customers.filter(c => c.segment === 'Baru').length }
+
+  const openGift = async (customer) => {
+    // Load produk free (harga 0 atau nama mengandung Free/Loyalty)
+    const { data } = await supabase.from('products')
+      .select('*')
+      .eq('is_available', true)
+      .or('price.eq.0,name.ilike.%Free%,name.ilike.%Loyalty%,name.ilike.%Hadiah%')
+    setGiftProducts(data || [])
+    setGiftSelected(null)
+    setGiftNotes('')
+    setGiftModal(customer)
+  }
+
+  const sendGift = async () => {
+    if (!giftSelected || !giftModal) return
+    setGiftSaving(true)
+
+    // Buat order gift dengan total 0
+    const { data: order } = await supabase.from('orders').insert({
+      customer_id: giftModal.id,
+      customer_name: giftModal.name,
+      gedung: giftModal.gedung,
+      lantai: giftModal.lantai,
+      phone: giftModal.phone,
+      catatan: `🎁 Hadiah dari admin: ${giftNotes}`,
+      total_amount: 0,
+      status: 'Baru',
+    }).select().single()
+
+    if (order) {
+      await supabase.from('order_items').insert({
+        order_id: order.id,
+        product_id: giftSelected.id,
+        product_name: `🎁 ${giftSelected.name} (Hadiah)`,
+        quantity: 1,
+        price: 0,
+        subtotal: 0,
+        notes: `Hadiah untuk pelanggan setia: ${giftModal.name}`,
+      })
+    }
+
+    setGiftSaving(false)
+    setGiftModal(null)
+    alert(`✅ Hadiah ${giftSelected.name} berhasil dikirim untuk ${giftModal.name}!`)
+  }
 
   return (
     <div>
@@ -121,7 +171,52 @@ export default function CRM() {
               <tbody>
                 {filtered.map(c => {
                   const cfg = SEGMENT_CONFIG[c.segment] || SEGMENT_CONFIG.Baru
-                  return (
+                  const openGift = async (customer) => {
+    // Load produk free (harga 0 atau nama mengandung Free/Loyalty)
+    const { data } = await supabase.from('products')
+      .select('*')
+      .eq('is_available', true)
+      .or('price.eq.0,name.ilike.%Free%,name.ilike.%Loyalty%,name.ilike.%Hadiah%')
+    setGiftProducts(data || [])
+    setGiftSelected(null)
+    setGiftNotes('')
+    setGiftModal(customer)
+  }
+
+  const sendGift = async () => {
+    if (!giftSelected || !giftModal) return
+    setGiftSaving(true)
+
+    // Buat order gift dengan total 0
+    const { data: order } = await supabase.from('orders').insert({
+      customer_id: giftModal.id,
+      customer_name: giftModal.name,
+      gedung: giftModal.gedung,
+      lantai: giftModal.lantai,
+      phone: giftModal.phone,
+      catatan: `🎁 Hadiah dari admin: ${giftNotes}`,
+      total_amount: 0,
+      status: 'Baru',
+    }).select().single()
+
+    if (order) {
+      await supabase.from('order_items').insert({
+        order_id: order.id,
+        product_id: giftSelected.id,
+        product_name: `🎁 ${giftSelected.name} (Hadiah)`,
+        quantity: 1,
+        price: 0,
+        subtotal: 0,
+        notes: `Hadiah untuk pelanggan setia: ${giftModal.name}`,
+      })
+    }
+
+    setGiftSaving(false)
+    setGiftModal(null)
+    alert(`✅ Hadiah ${giftSelected.name} berhasil dikirim untuk ${giftModal.name}!`)
+  }
+
+  return (
                     <tr key={c.id} style={{ cursor: 'pointer', background: selected?.id === c.id ? '#FFF3D6' : '' }} onClick={() => selectCustomer(c)}>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -136,6 +231,9 @@ export default function CRM() {
                       <td onClick={e => e.stopPropagation()}>
                         <div style={{ display: 'flex', gap: 4 }}>
                           <button className="btn btn-sm btn-outline" onClick={() => openEdit(c)}>✏️</button>
+                          <button className="btn btn-sm" onClick={() => openGift(c)}
+                            style={{ background: '#F0FDF4', color: '#16A34A', border: '1px solid #16A34A', fontSize: 11 }}
+                            title="Beri hadiah">🎁</button>
                           <button className="btn btn-sm btn-danger" onClick={() => deleteCustomer(c)}>🗑</button>
                         </div>
                       </td>
@@ -177,6 +275,73 @@ export default function CRM() {
           </div>
         )}
       </div>
+      {/* Gift Modal */}
+      {giftModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div className="card" style={{ width: '100%', maxWidth: 440 }}>
+            <div className="flex-between mb-2">
+              <h3 style={{ fontWeight: 700 }}>🎁 Beri Hadiah</h3>
+              <button onClick={() => setGiftModal(null)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>✕</button>
+            </div>
+
+            {/* Info customer */}
+            <div style={{ background: '#F0FDF4', borderRadius: 10, padding: '12px', marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center' }}>
+              <div style={{ fontSize: 32 }}>👋</div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>{giftModal.name}</div>
+                <div style={{ fontSize: 12, color: '#666' }}>{giftModal.gedung} · Lt. {giftModal.lantai}</div>
+                <div style={{ fontSize: 12, color: '#16A34A', fontWeight: 600 }}>{giftModal.total_orders}x order · {formatRp(giftModal.total_spent)}</div>
+              </div>
+            </div>
+
+            {/* Pilih produk */}
+            <div className="form-group">
+              <label className="form-label">Pilih Produk Hadiah</label>
+              {giftProducts.length === 0 ? (
+                <div style={{ fontSize: 13, color: '#888', padding: '10px', background: '#FFF3D6', borderRadius: 8 }}>
+                  ⚠️ Belum ada produk hadiah. Tambahkan dulu di Manajemen Menu dengan harga Rp 0 atau nama mengandung "Free"/"Hadiah".
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {giftProducts.map(p => (
+                    <button key={p.id} onClick={() => setGiftSelected(p)}
+                      style={{ padding: '10px 14px', borderRadius: 10, border: `2px solid ${giftSelected?.id === p.id ? '#16A34A' : 'var(--border)'}`, background: giftSelected?.id === p.id ? '#F0FDF4' : '#fff', cursor: 'pointer', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</div>
+                        <div style={{ fontSize: 11, color: '#888' }}>HPP: {formatRp(p.hpp || 0)}</div>
+                      </div>
+                      {giftSelected?.id === p.id && <span style={{ color: '#16A34A', fontWeight: 700 }}>✓ Dipilih</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Catatan (opsional)</label>
+              <input className="form-control" placeholder="Cth: Terima kasih sudah setia 10x order!"
+                value={giftNotes} onChange={e => setGiftNotes(e.target.value)} />
+            </div>
+
+            {giftSelected && (
+              <div style={{ background: '#E8F5E0', borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 13 }}>
+                <div style={{ fontWeight: 600, color: '#2D5016' }}>📋 Ringkasan Hadiah:</div>
+                <div style={{ color: '#555', marginTop: 4 }}>
+                  {giftModal.name} akan dapat <strong>{giftSelected.name}</strong> gratis.<br/>
+                  HPP tercatat: <strong>{formatRp(giftSelected.hpp || 0)}</strong> (sebagai beban promo)
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-outline" style={{ flex: 1 }} onClick={() => setGiftModal(null)}>Batal</button>
+              <button className="btn btn-primary" style={{ flex: 2 }} disabled={!giftSelected || giftSaving} onClick={sendGift}>
+                {giftSaving ? '⏳ Mengirim...' : '🎁 Kirim Hadiah'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
