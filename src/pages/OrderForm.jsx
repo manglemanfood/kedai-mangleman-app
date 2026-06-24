@@ -95,11 +95,16 @@ export default function OrderForm() {
 
   useEffect(() => {
     // Load products + recipes + raw materials untuk cek stok
-    // Load addon products (nama mengandung 'Add-on', 'Addon', 'Add On')
-    supabase.from('products').select('*').eq('is_available', true)
-      .or('name.ilike.%add-on%,name.ilike.%addon%,name.ilike.%Add On%')
+    // Load addon products - semua produk snack yang namanya mengandung Add
+    supabase.from('products').select('*')
+      .eq('is_available', true)
+      .eq('category', 'snack')
       .then(({ data }) => {
-        setAddonProducts(data || [])
+        const addons = (data || []).filter(p => {
+          const n = p.name.toLowerCase()
+          return n.includes('add') || n.includes('tambahan') || n.includes('telur')
+        })
+        setAddonProducts(addons)
       })
 
     // Load products dulu - tampilkan semua yang is_available
@@ -1056,7 +1061,7 @@ export default function OrderForm() {
               )
             })}
 
-            {/* ADD-ON POPUP */}
+
             {addonProducts.length > 0 && (
               <div style={{ background: '#FFF9F0', border: '2px solid #E8A838', borderRadius: 14, padding: '14px', marginBottom: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
