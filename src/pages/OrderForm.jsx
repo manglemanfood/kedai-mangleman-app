@@ -33,23 +33,20 @@ const isAddon = (name) => { const n = (name || '').toLowerCase(); return n.inclu
 // Kategori yang pakai dropdown (pilih varian)
 const DROPDOWN_CATEGORIES = ['mie', 'dimsum']
 
-function buildWAMessage(info, cartItems, cart, promoCart, freeItems, total, orderNum) {
+function buildWAMessage(info, cartItems, cart, promoCart, freeItems, addonItems, total, orderNum) {
   const regularItems = cartItems.map(p =>
     `  • ${p.name} x${cart[p.id]} = ${formatHarga(p.price * cart[p.id])}`
   )
   const promoItems = promoCart.map(pc =>
     `  • 🎁 ${pc.promo.name} x${pc.qty} = ${formatHarga(pc.promo.bundle_price * pc.qty)} (hemat ${formatHarga(pc.promo.diskon * pc.qty)})`
   )
-  const addonLines = Object.entries(selectedAddons)
-    .filter(([,q]) => q > 0)
-    .map(([id, qty]) => {
-      // Note: addonProducts not in scope here, use product name from cart
-      return `  • ➕ Add-on x${qty}`
-    })
+  const addonLines = addonItems.map(a =>
+    `  • ➕ ${a.name} x${a.qty} = ${formatHarga(a.price * a.qty)}`
+  )
   const freeItemLines = freeItems.map(fi =>
     `  • 🆓 ${fi.product.name} x${fi.qty} = GRATIS! (nilai ${formatHarga(fi.originalPrice * fi.qty)})\n    📍 Berlaku untuk 1 alamat/gedung yang sama`
   )
-  const items = [...promoItems, ...regularItems, ...freeItemLines].join('\n')
+  const items = [...promoItems, ...regularItems, ...freeItemLines, ...addonLines].join('\n')
   return encodeURIComponent(
 `🍱 *ORDER BARU - Kedai MangLeman*
 ━━━━━━━━━━━━━━━━━━
@@ -433,7 +430,13 @@ export default function OrderForm() {
 
       const num = order.order_number || order.id.slice(0, 8).toUpperCase()
       setOrderNum(num)
-      setWaUrl(`https://wa.me/${ADMIN_WA}?text=${buildWAMessage(info, cartItems, cart, promoCart, freeItems, total, num)}`)
+      const addonItemsForWA = Object.entries(selectedAddons)
+        .filter(([,q]) => q > 0)
+        .map(([id, qty]) => {
+          const prod = addonProducts.find(p => p.id === id)
+          return { name: prod?.name || 'Add-on', qty, price: prod?.price || 0 }
+        })
+      setWaUrl(`https://wa.me/${ADMIN_WA}?text=${buildWAMessage(info, cartItems, cart, promoCart, freeItems, addonItemsForWA, total, num)}`)
       setStep(4)
     } catch (e) {
       setError('Gagal mengirim pesanan: ' + (e?.message || e?.toString() || 'Unknown error'))
