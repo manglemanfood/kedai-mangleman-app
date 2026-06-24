@@ -28,7 +28,7 @@ const categoryLabel = {
 }
 
 // Cek apakah produk adalah add-on
-const isAddon = (name) => { const n = (name || '').toLowerCase(); return n.includes('add-on') || n.includes('addon') || n.includes('add on') }
+setAddonProducts(data || [])
 
 // Kategori yang pakai dropdown (pilih varian)
 const DROPDOWN_CATEGORIES = ['mie', 'dimsum']
