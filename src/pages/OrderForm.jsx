@@ -28,7 +28,7 @@ const categoryLabel = {
 }
 
 // Cek apakah produk adalah add-on
-const isAddon = (name) => (name || '').toLowerCase().includes('add-on') || (name || '').toLowerCase().includes('addon')
+const isAddon = (name) => { const n = (name || '').toLowerCase(); return n.includes('add-on') || n.includes('addon') || n.includes('add on') }
 
 // Kategori yang pakai dropdown (pilih varian)
 const DROPDOWN_CATEGORIES = ['mie', 'dimsum']
@@ -95,10 +95,12 @@ export default function OrderForm() {
 
   useEffect(() => {
     // Load products + recipes + raw materials untuk cek stok
-    // Load addon products (nama mengandung 'Add-on' atau 'Addon')
-    supabase.from('products').select('*').eq('is_available', true).ilike('name', '%add-on%').then(({ data }) => {
-      setAddonProducts(data || [])
-    })
+    // Load addon products (nama mengandung 'Add-on', 'Addon', 'Add On')
+    supabase.from('products').select('*').eq('is_available', true)
+      .or('name.ilike.%add-on%,name.ilike.%addon%,name.ilike.%Add On%')
+      .then(({ data }) => {
+        setAddonProducts(data || [])
+      })
 
     // Load products dulu - tampilkan semua yang is_available
     supabase.from('products').select('*').eq('is_available', true).order('category')
