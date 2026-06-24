@@ -602,23 +602,46 @@ export default function OrderForm() {
                   </div>
                   <div style={{ fontSize: 28, marginLeft: 10 }}>⏰</div>
                 </div>
-                <button
-                  onClick={() => {
-                    const nowWIB = new Date(Date.now() + 7*60*60*1000)
-                    const besok = new Date(nowWIB.getTime() + 24*60*60*1000).toISOString().split('T')[0]
-                    setDeliveryDate(besok)
-                    alert(`✅ Pesananmu akan dikirim besok (${new Date(besok+'T00:00:00').toLocaleDateString('id-ID', { weekday:'long', day:'numeric', month:'long' })})`)
-                  }}
-                  style={{
-                    width: '100%', padding: '10px', borderRadius: 10,
-                    background: deliveryDate ? '#E8A838' : 'rgba(255,255,255,0.15)',
-                    border: '1.5px solid #E8A838', color: '#fff',
-                    fontWeight: 700, fontSize: 13, cursor: 'pointer'
-                  }}>
-                  {deliveryDate
-                    ? `✅ Dikirim Besok — ${new Date(deliveryDate+'T00:00:00').toLocaleDateString('id-ID', { weekday:'long', day:'numeric', month:'long' })}`
-                    : '📅 Pesan Sekarang, Kirim Besok!'}
-                </button>
+                {/* Tampilkan item promo besok */}
+                {promosBesok.map(promo => {
+                  const items = typeof promo.items === 'string' ? JSON.parse(promo.items) : promo.items || []
+                  const pct = promo.normal_price > 0 ? Math.round((promo.diskon / promo.normal_price) * 100) : 0
+                  const alreadyAdded = promoCart.some(pc => pc.promo.id === promo.id)
+                  return (
+                    <div key={promo.id} style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 10, padding: '10px 12px', marginBottom: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <div>
+                          <span style={{ fontWeight: 700, fontSize: 14, color: '#fff' }}>{promo.tag || '🎁'} {promo.name}</span>
+                          <span style={{ marginLeft: 8, background: '#DC2626', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 6 }}>-{pct}%</span>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', textDecoration: 'line-through' }}>Rp {Number(promo.normal_price).toLocaleString('id-ID')}</div>
+                          <div style={{ fontSize: 15, fontWeight: 800, color: '#E8A838' }}>Rp {Number(promo.bundle_price).toLocaleString('id-ID')}</div>
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginBottom: 8 }}>
+                        {items.map((it, i) => <span key={i}>{i > 0 ? ' + ' : ''}{it.qty > 1 ? `${it.qty}x ` : ''}{it.name}</span>)}
+                      </div>
+                      <button
+                        onClick={() => {
+                          // Set delivery date ke besok
+                          const nowWIB = new Date(Date.now() + 7*60*60*1000)
+                          const besok = new Date(nowWIB.getTime() + 24*60*60*1000).toISOString().split('T')[0]
+                          setDeliveryDate(besok)
+                          // Tambah promo ke cart
+                          if (!alreadyAdded) addPromoToCart(promo)
+                        }}
+                        style={{
+                          width: '100%', padding: '9px', borderRadius: 8,
+                          background: alreadyAdded ? '#16A34A' : '#E8A838',
+                          border: 'none', color: '#fff',
+                          fontWeight: 700, fontSize: 13, cursor: 'pointer'
+                        }}>
+                        {alreadyAdded ? '✅ Ditambahkan — Kirim Besok!' : '🛒 Pesan Paket Ini untuk Besok'}
+                      </button>
+                    </div>
+                  )
+                })}
               </div>
             )}
 
