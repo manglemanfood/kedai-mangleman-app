@@ -263,15 +263,34 @@ export default function CRM() {
               ))}
             </div>
             <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: 'var(--text-muted)' }}>RIWAYAT ORDER</h4>
-            {history.map(o => (
-              <div key={o.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontWeight: 600 }}>{formatRp(o.total_amount)}</span>
-                  <span style={{ color: 'var(--text-muted)' }}>{new Date(o.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
+            {history.map(o => {
+              const isGift = o.total_amount === 0
+              const itemNames = (o.order_items || []).map(i => i.product_name).filter(Boolean)
+              return (
+                <div key={o.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {isGift && (
+                        <span style={{ background: '#E8F5E0', color: '#16A34A', fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 6 }}>
+                          🎁 HADIAH
+                        </span>
+                      )}
+                      <span style={{ fontWeight: 600, color: isGift ? '#16A34A' : 'var(--text)' }}>
+                        {isGift ? 'GRATIS' : formatRp(o.total_amount)}
+                      </span>
+                    </div>
+                    <span style={{ color: 'var(--text-muted)' }}>
+                      {new Date(o.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                    </span>
+                  </div>
+                  <div style={{ color: 'var(--text-muted)', marginTop: 3, fontSize: 11 }}>
+                    {itemNames.length > 0
+                      ? itemNames.map(n => n.replace('🎁 ', '')).join(', ')
+                      : o.catatan || '-'}
+                  </div>
                 </div>
-                <div style={{ color: 'var(--text-muted)', marginTop: 2 }}>{o.order_items?.map(i => i.product_name).join(', ')}</div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
