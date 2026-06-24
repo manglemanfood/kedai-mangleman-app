@@ -333,16 +333,17 @@ export default function OrderForm() {
         price: p.price,
         subtotal: p.price * cart[p.id],
       }))
-      // Promo bundle items
+
+      // Promo bundle - insert satu per satu karena product_id null
       const promoOrderItems = promoCart.map(pc => ({
         order_id: order.id,
-        product_id: null,
         product_name: `🎁 ${pc.promo.name}`,
         quantity: pc.qty,
         price: pc.promo.bundle_price,
         subtotal: pc.promo.bundle_price * pc.qty,
       }))
-      // Free items (harga 0)
+
+      // Free items
       const freeOrderItems = freeItems.map(fi => ({
         order_id: order.id,
         product_id: fi.product.id,
@@ -351,8 +352,12 @@ export default function OrderForm() {
         price: 0,
         subtotal: 0,
       }))
+
       const allItems = [...regularOrderItems, ...promoOrderItems, ...freeOrderItems]
-      if (allItems.length > 0) await supabase.from('order_items').insert(allItems)
+      if (allItems.length > 0) {
+        const { error: itemsErr } = await supabase.from('order_items').insert(allItems)
+        if (itemsErr) throw itemsErr
+      }
 
       if (customerId) {
         const { data: cust } = await supabase.from('customers').select('total_orders,total_spent').eq('id', customerId).single()
@@ -373,8 +378,8 @@ export default function OrderForm() {
       setWaUrl(`https://wa.me/${ADMIN_WA}?text=${buildWAMessage(info, cartItems, cart, promoCart, freeItems, total, num)}`)
       setStep(4)
     } catch (e) {
-      setError('Gagal mengirim pesanan. Coba lagi ya!')
-      console.error(e)
+      setError('Gagal mengirim pesanan: ' + (e?.message || e?.toString() || 'Unknown error'))
+      console.error('Order error:', e)
     }
     setLoading(false)
   }
