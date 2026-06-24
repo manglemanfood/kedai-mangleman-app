@@ -40,13 +40,13 @@ export default function Dashboard() {
     const toDt = to + 'T23:59:59'
 
     const [ordersRes, expensesRes, itemsRes, recentRes] = await Promise.all([
-      supabase.from('orders').select('total_amount,status,created_at').gte('created_at', fromDt).lte('created_at', toDt),
+      supabase.from('orders').select('total_amount,status,created_at,delivery_date').or(`and(delivery_date.gte.${from},delivery_date.lte.${to}),and(delivery_date.is.null,created_at.gte.${fromDt},created_at.lte.${toDt})`),
       supabase.from('expenses').select('amount').gte('expense_date', from).lte('expense_date', to),
       supabase.from('order_items').select('product_name,quantity,subtotal,orders!inner(created_at,status,delivery_date)'),
       supabase.from('orders').select('*, order_items(*)').order('created_at', { ascending: false }).limit(6),
     ])
 
-    const validOrders = (ordersRes.data || []).filter(o => o.status !== 'Batal')
+    const validOrders = (ordersRes.data || []).filter(o => { if (o.status === 'Batal') return false; const d = o.delivery_date || o.created_at?.slice(0,10); return d >= from && d <= to })
     const revenue = validOrders.reduce((s, o) => s + o.total_amount, 0)
     const expense = (expensesRes.data || []).reduce((s, e) => s + e.amount, 0)
     const pending = (ordersRes.data || []).filter(o => ['Baru','Diproses','Dikemas'].includes(o.status)).length
@@ -74,7 +74,7 @@ export default function Dashboard() {
       days.push(d.toISOString().split('T')[0])
     }
     const chartRows = days.map(day => {
-      const dayOrders = validOrders.filter(o => o.created_at?.startsWith(day))
+      const dayOrders = validOrders.filter(o => (o.delivery_date || o.created_at?.slice(0,10)) === day)
       return {
         day: new Date(day).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
         revenue: dayOrders.reduce((s, o) => s + o.total_amount, 0),
