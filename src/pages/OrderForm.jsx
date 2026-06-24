@@ -8,6 +8,15 @@ const formatHarga = (n) => {
   return 'Rp ' + num.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
 
+// Normalisasi nama: hapus aksen, trim spasi ganda
+const normalizeName = (name) => {
+  return name
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '') // hapus aksen (è→e, é→e, dll)
+    .replace(/\s+/g, ' ')            // hapus spasi ganda
+    .trim()
+}
+
 const ADMIN_WA = '6285353292224'
 
 const categoryLabel = {
@@ -251,7 +260,7 @@ export default function OrderForm() {
           customerId = existing.id
         } else {
           const { data: newCust } = await supabase.from('customers').insert({
-            name: info.name, phone: info.phone, gedung: info.gedung, lantai: info.lantai, segment: 'Baru'
+            name: normalizedName, phone: info.phone, gedung: info.gedung, lantai: info.lantai, segment: 'Baru'
           }).select().single()
           if (newCust) customerId = newCust.id
         }
@@ -259,7 +268,7 @@ export default function OrderForm() {
 
       const { data: order, error: orderErr } = await supabase.from('orders').insert({
         customer_id: customerId,
-        customer_name: info.name,
+        customer_name: normalizeName(info.name),
         gedung: info.gedung,
         lantai: info.lantai,
         phone: info.phone,
