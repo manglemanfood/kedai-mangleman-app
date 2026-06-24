@@ -171,12 +171,17 @@ export default function OrderForm() {
         const nowWIB = new Date(Date.now() + 7 * 60 * 60 * 1000)
         const todayWIB = nowWIB.toISOString().split('T')[0]
         const tomorrowWIB = new Date(nowWIB.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        const jamWIB = nowWIB.getUTCHours() // jam dalam WIB (sudah +7)
 
-        const active = data.filter(b => {
+        // Promo hari ini hanya tampil sebelum jam 14:00 WIB
+        const promoMasihAktif = jamWIB < 14
+
+        const active = promoMasihAktif ? data.filter(b => {
           if (b.start_date && b.start_date > todayWIB) return false
           if (b.end_date && b.end_date < todayWIB) return false
           return true
-        })
+        }) : [] // setelah jam 14 → kosong
+
         setPromos(active)
 
         // Cek promo besok (H-1 reminder)
