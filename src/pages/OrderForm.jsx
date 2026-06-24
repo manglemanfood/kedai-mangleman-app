@@ -27,6 +27,9 @@ const categoryLabel = {
   snack: '🍿 Snack',
 }
 
+// Cek apakah produk adalah add-on
+const isAddon = (name) => (name || '').toLowerCase().includes('add-on') || (name || '').toLowerCase().includes('addon')
+
 // Kategori yang pakai dropdown (pilih varian)
 const DROPDOWN_CATEGORIES = ['mie', 'dimsum']
 
@@ -294,6 +297,7 @@ export default function OrderForm() {
     setLoading(true)
     setError('')
     try {
+      const normalizedName = normalizeName(info.name)
       let customerId = null
       if (info.phone) {
         const { data: existing } = await supabase.from('customers').select('id').eq('phone', info.phone).maybeSingle()
@@ -724,7 +728,7 @@ export default function OrderForm() {
             {Object.entries(grouped)
               .sort(([a], [b]) => {
                 const order = ['ricebowl','mie','dimsum','snack','minuman']
-                return (order.indexOf(a) ?? 99) - (order.indexOf(b) ?? 99)
+                return (order.indexOf(a) === -1 ? 99 : order.indexOf(a)) - (order.indexOf(b) === -1 ? 99 : order.indexOf(b))
               })
               .map(([cat, items]) => {
               const isDropdown = DROPDOWN_CATEGORIES.includes(cat)
@@ -733,6 +737,12 @@ export default function OrderForm() {
                   <h4 style={{ fontSize: 14, fontWeight: 700, color: '#2D5016', marginBottom: 12 }}>
                     {categoryLabel[cat] || cat}
                   </h4>
+                  {/* Label Add-on jika ada produk add-on di kategori ini */}
+                  {!isDropdown && items.some(p => isAddon(p.name)) && items.some(p => !isAddon(p.name)) && (
+                    <div style={{ fontSize: 11, color: '#0369A1', background: '#E0F2FE', padding: '4px 10px', borderRadius: 6, marginBottom: 8, display: 'inline-block' }}>
+                      ➕ Tersedia pilihan Add-on
+                    </div>
+                  )}
 
                   {isDropdown ? (
                     /* Dropdown untuk Mie & Dimsum */
@@ -769,7 +779,12 @@ export default function OrderForm() {
                     items.map(p => (
                       <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid #F0EDE8' }}>
                         <div>
-                          <div style={{ fontSize: 14, fontWeight: 500 }}>{p.name}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {isAddon(p.name) && (
+                              <span style={{ background: '#E0F2FE', color: '#0369A1', fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 6 }}>➕ ADD-ON</span>
+                            )}
+                            <span style={{ fontSize: 14, fontWeight: 500 }}>{p.name.replace(/add-on\s*/i, '').replace(/addon\s*/i, '')}</span>
+                          </div>
                           <div style={{ fontSize: 13, color: '#E8A838', fontWeight: 600 }}>{formatHarga(p.price)}</div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
