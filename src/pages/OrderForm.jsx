@@ -255,24 +255,36 @@ export default function OrderForm() {
   const checkDuplicate = async () => {
     if (dupChecked) { setStep(3); return }
     const normalName = normalizeName(info.name)
-    // Cari customer dengan nama mirip di gedung yang sama
+
+    // Ambil semua customer (max 500) lalu filter di client
     const { data: existing } = await supabase
       .from('customers')
       .select('id, name, phone, gedung, lantai, total_orders, total_spent')
-      .ilike('gedung', `%${info.gedung.trim()}%`)
-      .limit(20)
+      .limit(500)
 
     if (!existing || existing.length === 0) { setStep(3); return }
 
-    // Cari yang namanya mirip tapi tidak persis sama
+    // Cari yang namanya mirip DAN gedung mirip
     const similar = existing.find(c => {
-      const cName = normalizeName(c.name)
-      if (cName === normalName) return false // persis sama = tidak perlu tanya
-      // Cek kesamaan: nama mengandung kata yang sama
-      const inWords = normalName.toLowerCase().split(' ').filter(w => w.length > 1)
-      const cWords = cName.toLowerCase().split(' ').filter(w => w.length > 1)
-      const matchWords = inWords.filter(w => cWords.some(cw => cw.includes(w) || w.includes(cw)))
-      return matchWords.length >= 1 && c.lantai === info.lantai
+      const cName = normalizeName(c.name).toLowerCase()
+      const inName = normalName.toLowerCase()
+
+      // Skip jika persis sama
+      if (cName === inName) return false
+
+      // Cek gedung mirip
+      const gedungMirip = (c.gedung || '').toLowerCase().includes(info.gedung.toLowerCase().slice(0,3)) ||
+        info.gedung.toLowerCase().includes((c.gedung || '').toLowerCase().slice(0,3))
+
+      if (!gedungMirip) return false
+
+      // Cek nama mirip: salah satu mengandung yang lain, atau share 2+ kata
+      if (cName.includes(inName) || inName.includes(cName)) return true
+
+      const inWords = inName.split(' ').filter(w => w.length > 2)
+      const cWords = cName.split(' ').filter(w => w.length > 2)
+      const matchCount = inWords.filter(w => cWords.some(cw => cw === w || cw.includes(w) || w.includes(cw))).length
+      return matchCount >= 1
     })
 
     if (similar) {
