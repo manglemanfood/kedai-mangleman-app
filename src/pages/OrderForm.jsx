@@ -66,7 +66,9 @@ export default function OrderForm() {
   const [promos, setPromos] = useState([])
   const [cart, setCart] = useState({})
   const [promoCart, setPromoCart] = useState([]) // [{promo, qty}]
-  const [freeItems, setFreeItems] = useState([]) // free items dari promo qty
+  const [freeItems, setFreeItems] = useState([])
+  const [dupCandidate, setDupCandidate] = useState(null) // {existing, incoming}
+  const [dupChecked, setDupChecked] = useState(false) // free items dari promo qty
   const [showFreeModal, setShowFreeModal] = useState(false)
   const [pendingFreeRule, setPendingFreeRule] = useState(null)
 
@@ -249,6 +251,47 @@ export default function OrderForm() {
     })
   }
 
+  // Cek duplikat customer saat pindah dari step 2 ke 3
+  const checkDuplicate = async () => {
+    if (dupChecked) { setStep(3); return }
+    const normalName = normalizeName(info.name)
+    // Cari customer dengan nama mirip di gedung yang sama
+    const { data: existing } = await supabase
+      .from('customers')
+      .select('id, name, phone, gedung, lantai, total_orders, total_spent')
+      .ilike('gedung', `%${info.gedung.trim()}%`)
+      .limit(20)
+
+    if (!existing || existing.length === 0) { setStep(3); return }
+
+    // Cari yang namanya mirip tapi tidak persis sama
+    const similar = existing.find(c => {
+      const cName = normalizeName(c.name)
+      if (cName === normalName) return false // persis sama = tidak perlu tanya
+      // Cek kesamaan: nama mengandung kata yang sama
+      const inWords = normalName.toLowerCase().split(' ').filter(w => w.length > 1)
+      const cWords = cName.toLowerCase().split(' ').filter(w => w.length > 1)
+      const matchWords = inWords.filter(w => cWords.some(cw => cw.includes(w) || w.includes(cw)))
+      return matchWords.length >= 1 && c.lantai === info.lantai
+    })
+
+    if (similar) {
+      setDupCandidate({ existing: similar, incoming: { name: normalName, gedung: info.gedung, lantai: info.lantai } })
+    } else {
+      setStep(3)
+    }
+  }
+
+  const confirmMerge = (merge) => {
+    if (merge && dupCandidate) {
+      // Update info dengan nama dari existing customer
+      setInfo(i => ({ ...i, name: dupCandidate.existing.name }))
+    }
+    setDupCandidate(null)
+    setDupChecked(true)
+    setStep(3)
+  }
+
   const submitOrder = async () => {
     setLoading(true)
     setError('')
@@ -357,6 +400,50 @@ export default function OrderForm() {
     setPendingFreeRule(null)
   }
 
+  // ── POPUP DUPLIKAT ──────────────────────────────────
+  if (dupCandidate) return (
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #1A2E0A 0%, #2D5016 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+      <div style={{ background: '#fff', borderRadius: 20, padding: '2rem', maxWidth: 420, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+        <div style={{ textAlign: 'center', marginBottom: 20 }}>
+          <div style={{ fontSize: 48 }}>🤔</div>
+          <h3 style={{ fontWeight: 700, fontSize: 18, marginTop: 8 }}>Pelanggan yang sama?</h3>
+          <p style={{ color: '#666', fontSize: 13, marginTop: 6 }}>Kami menemukan pelanggan dengan nama mirip di gedung yang sama</p>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+          <div style={{ background: '#FFF3D6', borderRadius: 12, padding: '14px', border: '2px solid #E8A838' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#C8881A', marginBottom: 6, textTransform: 'uppercase' }}>Data baru</div>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>{dupCandidate.incoming.name}</div>
+            <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>{dupCandidate.incoming.gedung} · Lt. {dupCandidate.incoming.lantai}</div>
+            {info.phone && <div style={{ fontSize: 12, color: '#888' }}>📱 {info.phone}</div>}
+          </div>
+          <div style={{ background: '#E8F5E0', borderRadius: 12, padding: '14px', border: '2px solid #16A34A' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#16A34A', marginBottom: 6, textTransform: 'uppercase' }}>Data tersimpan</div>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>{dupCandidate.existing.name}</div>
+            <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>{dupCandidate.existing.gedung} · Lt. {dupCandidate.existing.lantai}</div>
+            {dupCandidate.existing.phone && <div style={{ fontSize: 12, color: '#888' }}>📱 {dupCandidate.existing.phone}</div>}
+            <div style={{ fontSize: 11, color: '#16A34A', marginTop: 4, fontWeight: 600 }}>{dupCandidate.existing.total_orders}x order · Rp {(dupCandidate.existing.total_spent || 0).toLocaleString('id-ID')}</div>
+          </div>
+        </div>
+
+        <p style={{ textAlign: 'center', fontSize: 14, color: '#555', marginBottom: 16 }}>
+          Apakah <strong>{dupCandidate.incoming.name}</strong> adalah orang yang sama dengan <strong>{dupCandidate.existing.name}</strong>?
+        </p>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={() => confirmMerge(false)}
+            style={{ flex: 1, padding: 12, background: '#F0EDE8', color: '#666', border: 'none', borderRadius: 10, fontWeight: 600, cursor: 'pointer' }}>
+            ❌ Bukan, beda orang
+          </button>
+          <button onClick={() => confirmMerge(true)}
+            style={{ flex: 1, padding: 12, background: '#16A34A', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, cursor: 'pointer' }}>
+            ✅ Ya, sama!
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+
   // ── STEP 4: Sukses ───────────────────────────────
   if (step === 4) return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #1A2E0A 0%, #2D5016 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
@@ -400,7 +487,7 @@ export default function OrderForm() {
           <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
           Konfirmasi via WhatsApp
         </a>
-        <button onClick={() => { setStep(1); setCart({}); setPromoCart([]); setFreeItems([]); setInfo({ name: '', gedung: '', lantai: '', phone: '', catatan: '' }); setOrderNum(''); setWaUrl('') }}
+        <button onClick={() => { setStep(1); setCart({}); setPromoCart([]); setFreeItems([]); setDupChecked(false); setDupCandidate(null); setInfo({ name: '', gedung: '', lantai: '', phone: '', catatan: '' }); setOrderNum(''); setWaUrl('') }}
           style={{ width: '100%', padding: '10px', background: '#F0EDE8', color: '#666', border: 'none', borderRadius: 10, fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
           Pesan Lagi
         </button>
@@ -713,7 +800,7 @@ export default function OrderForm() {
                   <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>{totalQty} item</div>
                   <div style={{ color: '#E8A838', fontWeight: 700, fontSize: 16 }}>{formatHarga(total)}</div>
                 </div>
-                <button onClick={() => setStep(3)} style={{ padding: '10px 20px', background: '#E8A838', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, cursor: 'pointer' }}>
+                <button onClick={checkDuplicate} style={{ padding: '10px 20px', background: '#E8A838', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, cursor: 'pointer' }}>
                   Lanjut →
                 </button>
               </div>
