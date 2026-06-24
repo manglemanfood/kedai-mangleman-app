@@ -338,7 +338,7 @@ export default function OrderForm() {
         price: pc.promo.bundle_price,
         subtotal: pc.promo.bundle_price * pc.qty,
       }))
-      // Free items (harga 0, tapi catat nilai aslinya di notes)
+      // Free items (harga 0)
       const freeOrderItems = freeItems.map(fi => ({
         order_id: order.id,
         product_id: fi.product.id,
@@ -346,7 +346,6 @@ export default function OrderForm() {
         quantity: fi.qty,
         price: 0,
         subtotal: 0,
-        notes: `Promo free item, nilai: ${fi.originalPrice * fi.qty}`,
       }))
       const allItems = [...regularOrderItems, ...promoOrderItems, ...freeOrderItems]
       if (allItems.length > 0) await supabase.from('order_items').insert(allItems)
