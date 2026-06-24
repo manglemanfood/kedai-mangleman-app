@@ -9,13 +9,54 @@ const formatNum = (n, unit) => {
 
 const today = () => new Date().toISOString().split('T')[0]
 
-const convertUnit = (qty, fromUnit, toUnit) => {
+// Tabel konversi satuan masak ke satuan dasar (gram / ml)
+// Powder: sdt=5g, sdm=15g | Cair: sdt=5ml, sdm=15ml
+const KONVERSI = {
+  // Satuan masak → gram (untuk bahan powder/padat)
+  'sdt->gram':  5,    // 1 sdt powder ≈ 5 gram
+  'sdm->gram':  15,   // 1 sdm powder ≈ 15 gram
+  'cup->gram':  120,  // 1 cup tepung ≈ 120 gram
+  'siung->gram': 5,   // 1 siung bawang ≈ 5 gram
+  // Satuan masak → ml (untuk bahan cair)
+  'sdt->ml':    5,    // 1 sdt cair = 5 ml
+  'sdm->ml':    15,   // 1 sdm cair = 15 ml
+  'cup->ml':    240,  // 1 cup = 240 ml
+  // Satuan berat
+  'gram->kg':   0.001,
+  'kg->gram':   1000,
+  // Satuan volume
+  'ml->liter':  0.001,
+  'liter->ml':  1000,
+}
+
+const CAIR_KEYWORDS = ['saos','saus','kecap','minyak','oil','air','cuka','susu','santan','kaldu','cair','liquid']
+const isCair = (name) => CAIR_KEYWORDS.some(k => (name||'').toLowerCase().includes(k))
+
+const convertUnit = (qty, fromUnit, toUnit, materialName = '') => {
+  if (!fromUnit || !toUnit) return qty
   if (fromUnit === toUnit) return qty
-  if (fromUnit === 'gram' && toUnit === 'kg') return qty / 1000
-  if (fromUnit === 'kg' && toUnit === 'gram') return qty * 1000
-  if (fromUnit === 'ml' && toUnit === 'liter') return qty / 1000
-  if (fromUnit === 'liter' && toUnit === 'ml') return qty * 1000
-  return qty
+
+  const key = `${fromUnit}->${toUnit}`
+
+  // Direct conversion tersedia
+  if (KONVERSI[key] !== undefined) return qty * KONVERSI[key]
+
+  // Konversi via satuan dasar (gram atau ml)
+  const cair = isCair(materialName)
+  const baseUnit = cair ? 'ml' : 'gram'
+
+  // from → base → to
+  const toBase = KONVERSI[`${fromUnit}->${baseUnit}`]
+  const fromBase = KONVERSI[`${baseUnit}->${toUnit}`]
+  if (toBase && fromBase) return qty * toBase * fromBase
+
+  // Fallback: coba kedua kemungkinan (gram dan ml)
+  const altBase = cair ? 'gram' : 'ml'
+  const toAlt = KONVERSI[`${fromUnit}->${altBase}`]
+  const fromAlt = KONVERSI[`${altBase}->${toUnit}`]
+  if (toAlt && fromAlt) return qty * toAlt * fromAlt
+
+  return qty // tidak bisa konversi, kembalikan apa adanya
 }
 
 const FOOD_CATEGORIES = ['ricebowl', 'mie', 'dimsum', 'snack']
@@ -81,7 +122,7 @@ export default function Dapur() {
       const isKemasan = ['bowl','sendok','kresek','stiker','plastik','box','cup','tissue'].some(k => n.includes(k))
       if (isKemasan) return
 
-      const totalQty = convertUnit(r.qty_used * qty, r.unit, mat.unit)
+      const totalQty = convertUnit(r.qty_used * qty, r.unit, mat.unit, mat.name)
       if (!bahanMap[mat.id]) {
         bahanMap[mat.id] = { id: mat.id, name: mat.name, unit: mat.unit, stokAda: mat.stock_qty || 0, totalNeeded: 0, products: [] }
       }
