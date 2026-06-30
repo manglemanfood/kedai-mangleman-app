@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-const formatRp = (n) => 'Rp ' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })
+const formatRp = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 
 const BAHAN_KATEGORI = [
   { key: 'utama', label: '🥩 Produk Utama', color: '#2D5016', bg: '#E8F5E0' },
@@ -11,6 +11,14 @@ const BAHAN_KATEGORI = [
 ]
 
 const SATUAN = ['gram', 'kg', 'ml', 'liter', 'pcs', 'sdm', 'sdt', 'sachet', 'buah', 'siung', 'lembar', 'bungkus']
+
+// Harga efektif per satuan SETELAH disesuaikan susut masak (yield rate)
+// Misal beli 1000gr @ Rp45.000, yield 50% (jadi 500gr matang) -> harga efektif = Rp90/gr (bukan Rp45/gr)
+function calcHargaEfektif(hargaDasar, yieldRate) {
+  const yr = parseFloat(yieldRate) || 100
+  if (yr >= 100 || yr <= 0) return hargaDasar
+  return hargaDasar / (yr / 100)
+}
 
 export default function KalkulatorHPP() {
   const [products, setProducts] = useState([])
@@ -106,9 +114,11 @@ export default function KalkulatorHPP() {
           if (toBase && fromBase) qty = r.qty_used * toBase * fromBase
         }
       }
-      const cost = qty * (mat.hpp_fifo > 0 ? mat.hpp_fifo : mat.last_price)
+      const hargaDasar = mat.hpp_fifo > 0 ? mat.hpp_fifo : mat.last_price
+      const hargaEfektif = calcHargaEfektif(hargaDasar, mat.yield_rate)
+      const cost = qty * hargaEfektif
       total += cost
-      return { name: r.material_name, cost, qty: r.qty_used, unit: r.unit }
+      return { name: r.material_name, cost, qty: r.qty_used, unit: r.unit, yieldRate: mat.yield_rate, hargaEfektif }
     })
     const overheadCost = total * (overhead / 100)
     const hpp = total + overheadCost
@@ -227,7 +237,12 @@ export default function KalkulatorHPP() {
                             {items.map((d, i) => (
                               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '2px 0', color: 'var(--text-muted)' }}>
                                 <span style={{ color: kat.color, fontWeight: 600, marginRight: 4 }}>{i+1}.</span>
-                                <span style={{ flex: 1 }}>{d.name} ({d.qty} {d.unit})</span>
+                                <span style={{ flex: 1 }}>
+                                  {d.name} ({d.qty} {d.unit})
+                                  {d.yieldRate > 0 && d.yieldRate < 100 && (
+                                    <span style={{ fontSize: 10, color: '#C8881A', marginLeft: 6, fontWeight: 600 }}>⚖️ susut {d.yieldRate}%</span>
+                                  )}
+                                </span>
                                 <span>{formatRp(d.cost)}</span>
                               </div>
                             ))}
