@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, CartesianGrid } from 'recharts'
 
 const formatRp = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 
@@ -31,7 +31,9 @@ export default function Dashboard() {
   const [recentOrders, setRecentOrders] = useState([])
   const [chartData, setChartData] = useState([])
   const [topProducts, setTopProducts] = useState([])
+  const [monthlyData, setMonthlyData] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadingMonthly, setLoadingMonthly] = useState(true)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -87,6 +89,48 @@ export default function Dashboard() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
+  // Fetch 12-month revenue trend (independent of date filter, always runs once)
+  const fetchMonthlyData = useCallback(async () => {
+    setLoadingMonthly(true)
+    const now = new Date()
+    const months = []
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      months.push({
+        key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+        label: d.toLocaleDateString('id-ID', { month: 'short', year: '2-digit' }),
+        year: d.getFullYear(),
+        monthIdx: d.getMonth(),
+      })
+    }
+    const rangeFrom = `${months[0].year}-${String(months[0].monthIdx + 1).padStart(2, '0')}-01`
+    const lastMonth = months[months.length - 1]
+    const lastDay = new Date(lastMonth.year, lastMonth.monthIdx + 1, 0).getDate()
+    const rangeTo = `${lastMonth.year}-${String(lastMonth.monthIdx + 1).padStart(2, '0')}-${lastDay}`
+
+    const { data } = await supabase
+      .from('orders')
+      .select('total_amount,status,created_at,delivery_date')
+      .or(`and(delivery_date.gte.${rangeFrom},delivery_date.lte.${rangeTo}),and(delivery_date.is.null,created_at.gte.${rangeFrom}T00:00:00,created_at.lte.${rangeTo}T23:59:59)`)
+
+    const valid = (data || []).filter(o => o.status !== 'Batal')
+
+    const rows = months.map(m => {
+      const monthRevenue = valid
+        .filter(o => {
+          const d = o.delivery_date || o.created_at?.slice(0, 10)
+          return d && d.startsWith(m.key)
+        })
+        .reduce((s, o) => s + o.total_amount, 0)
+      return { label: m.label, revenue: monthRevenue }
+    })
+
+    setMonthlyData(rows)
+    setLoadingMonthly(false)
+  }, [])
+
+  useEffect(() => { fetchMonthlyData() }, [fetchMonthlyData])
+
   const profit = stats.revenue - stats.expense
   const modeLabels = { 'hari-ini': 'Hari Ini', '7-hari': '7 Hari Terakhir', '1-bulan': 'Bulan Ini', 'custom': 'Custom' }
 
@@ -131,7 +175,64 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Stats */}
+      {/* Monthly Revenue Growth Chart */}
+      <div className="card mb-2" style={{ padding: '1.25rem', background: 'linear-gradient(135deg, #1A2E0A 0%, #2D5016 100%)', border: 'none' }}>
+        <div className="flex-between" style={{ marginBottom: 4, alignItems: 'flex-start' }}>
+          <div>
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: '#fff', marginBottom: 2 }}>📈 Pertumbuhan Omset Bulanan</h3>
+            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>12 bulan terakhir</p>
+          </div>
+          {!loadingMonthly && monthlyData.length >= 2 && (() => {
+            const curr = monthlyData[monthlyData.length - 1].revenue
+            const prev = monthlyData[monthlyData.length - 2].revenue
+            const growth = prev > 0 ? Math.round(((curr - prev) / prev) * 100) : (curr > 0 ? 100 : 0)
+            const isUp = growth >= 0
+            return (
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>Bulan ini</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: '#E8A838' }}>{formatRp(curr)}</div>
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 700,
+                  color: isUp ? '#7CDB6B' : '#FF8A80', marginTop: 2,
+                }}>
+                  {isUp ? '▲' : '▼'} {Math.abs(growth)}% vs bulan lalu
+                </div>
+              </div>
+            )
+          })()}
+        </div>
+
+        {loadingMonthly ? (
+          <div className="loading" style={{ height: 200 }}><div className="spinner" /></div>
+        ) : (
+          <ResponsiveContainer width="100%" height={220}>
+            <AreaChart data={monthlyData} margin={{ top: 16, right: 8, left: -16, bottom: 0 }}>
+              <defs>
+                <linearGradient id="omsetGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#E8A838" stopOpacity={0.55} />
+                  <stop offset="100%" stopColor="#E8A838" stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.6)' }} axisLine={false} tickLine={false} />
+              <YAxis
+                tickFormatter={v => v >= 1000000 ? (v / 1000000).toFixed(1) + 'jt' : v >= 1000 ? (v / 1000) + 'rb' : v}
+                tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.6)' }}
+                axisLine={false} tickLine={false} width={48}
+              />
+              <Tooltip
+                formatter={v => [formatRp(v), 'Omset']}
+                contentStyle={{ background: '#1A2E0A', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, fontSize: 12 }}
+                labelStyle={{ color: '#E8A838', fontWeight: 700 }}
+                itemStyle={{ color: '#fff' }}
+              />
+              <Area type="monotone" dataKey="revenue" stroke="#E8A838" strokeWidth={3} fill="url(#omsetGradient)" dot={{ r: 3, fill: '#E8A838', strokeWidth: 0 }} activeDot={{ r: 5 }} />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+
       <div className="grid-4 mb-2">
         {[
           { label: 'Total Order', value: stats.orders + ' order', icon: '📦', color: '#0077B6' },
