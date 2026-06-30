@@ -7,7 +7,15 @@ const pct = (a, b) => b > 0 ? Math.min(999, Math.round((a / b) * 100)) : 0
 const MONTHS = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember']
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des']
 
-const today = new Date()
+// Selalu gunakan WIB (UTC+7) untuk konsistensi dengan timezone Indonesia
+const toWIBDate = (isoStr) => {
+  if (!isoStr) return ''
+  const d = new Date(isoStr)
+  const wib = new Date(d.getTime() + 7 * 60 * 60 * 1000)
+  return wib.toISOString().split('T')[0]
+}
+const todayWIB = toWIBDate(new Date().toISOString())
+const today = new Date(todayWIB + 'T00:00:00')
 
 // Motivasi berdasarkan progress
 const getMotivasi = (pctRevenue, hariTersisa, hariTotal) => {
@@ -82,7 +90,7 @@ export default function Target() {
     const days = []
     for (let d = 1; d <= lastDay; d++) {
       const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`
-      const dayOrders = validOrders.filter(o => o.created_at?.startsWith(dateStr))
+      const dayOrders = validOrders.filter(o => toWIBDate(o.created_at) === dateStr)
       days.push({
         date: dateStr, day: d,
         revenue: dayOrders.reduce((s, o) => s + o.total_amount, 0),
@@ -103,7 +111,7 @@ export default function Target() {
     // History per bulan
     const monthlyRevenue = {}
     ;(histRes.data || []).filter(o => o.status !== 'Batal').forEach(o => {
-      const m = o.created_at?.slice(0, 7)
+      const m = toWIBDate(o.created_at)?.slice(0, 7)
       if (m) monthlyRevenue[m] = (monthlyRevenue[m] || 0) + o.total_amount
     })
     setHistoryData(Object.entries(monthlyRevenue).sort())
@@ -139,8 +147,9 @@ export default function Target() {
 
   const isCurrentMonth = month === today.getMonth() + 1 && year === today.getFullYear()
   const hariTotal    = getDaysInMonth(year, month)
-  const hariJalan    = isCurrentMonth ? today.getDate() : hariTotal
-  const hariTersisa  = isCurrentMonth ? hariTotal - today.getDate() : 0
+  const todayDateWIB = parseInt(todayWIB.split('-')[2])
+  const hariJalan    = isCurrentMonth ? todayDateWIB : hariTotal
+  const hariTersisa  = isCurrentMonth ? hariTotal - todayDateWIB : 0
   const motivasi     = getMotivasi(pRevenue, hariTersisa, hariTotal)
 
   // Proyeksi
@@ -368,7 +377,7 @@ export default function Target() {
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 100, overflowX: 'auto', paddingBottom: 4 }}>
                   {dailyData.map((d, i) => {
                     const h = maxRevenue > 0 ? Math.max(4, (d.revenue / maxRevenue) * 90) : 4
-                    const isToday = isCurrentMonth && d.day === today.getDate()
+                    const isToday = isCurrentMonth && d.day === todayDateWIB
                     return (
                       <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, minWidth: 18 }} title={`${d.date}: ${formatRp(d.revenue)}`}>
                         <div style={{ width: '100%', height: h, background: isToday ? '#E8A838' : d.revenue > 0 ? '#1A2E0A' : '#E5E5E5', borderRadius: '3px 3px 0 0', transition: 'height 0.5s', cursor: 'pointer', position: 'relative' }}>
