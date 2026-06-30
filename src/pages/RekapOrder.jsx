@@ -444,6 +444,7 @@ export default function RekapOrder() {
                     <th>Customer</th>
                     <th>Lokasi</th>
                     <th>Total</th>
+                    <th>Bayar</th>
                     <th>Status</th>
                     <th>Aksi</th>
                   </tr>
@@ -489,6 +490,22 @@ export default function RekapOrder() {
                           <span style={{ color: 'var(--text-muted)' }}>Lt. {o.lantai}</span>
                         </td>
                         <td style={{ fontWeight: 600, fontSize: 13 }}>{formatRp(o.total_amount)}</td>
+                        <td onClick={e => e.stopPropagation()}>
+                          <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                            {['Cash', 'QRIS', 'Transfer'].map(m => (
+                              <button key={m} onClick={() => supabase.from('orders').update({ payment_method: m }).eq('id', o.id).then(fetchOrders)}
+                                style={{
+                                  fontSize: 10, padding: '3px 6px', borderRadius: 6, border: '1.5px solid',
+                                  borderColor: (o.payment_method || 'Cash') === m ? '#2D5016' : '#ddd',
+                                  background: (o.payment_method || 'Cash') === m ? '#E8F5E0' : '#fff',
+                                  color: (o.payment_method || 'Cash') === m ? '#2D5016' : '#999',
+                                  cursor: 'pointer', fontWeight: (o.payment_method || 'Cash') === m ? 700 : 400,
+                                }}>
+                                {m}
+                              </button>
+                            ))}
+                          </div>
+                        </td>
                         <td>
                           <span className="badge" style={{ background: STATUS_COLOR[o.status] + '22', color: STATUS_COLOR[o.status], fontSize: 11 }}>
                             {o.status}
