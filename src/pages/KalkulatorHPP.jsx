@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-const formatRp = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
+const formatRp = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 })
 
 const BAHAN_KATEGORI = [
   { key: 'utama', label: '🥩 Produk Utama', color: '#2D5016', bg: '#E8F5E0' },
