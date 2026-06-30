@@ -160,11 +160,17 @@ export default function RekapOrder() {
   const isToday = (dt) => dt && dt.startsWith(todayStr())
   const isPast  = (dt) => dt && dt < todayStr() + 'T00:00:00'
 
-  // Daftar order yang dikirim hari ini (delivery_date hari ini, atau tanpa delivery_date tapi dibuat hari ini)
+  // Order yang masuk ke PDF Packing: gunakan delivery_date sebagai acuan utama.
+  // Jika filter aktif "Hari Ini" -> pakai tanggal hari ini.
+  // Jika filter "Pilih Tanggal" -> pakai dateFrom (tanggal kirim yang dipilih).
+  // Jika filter "Semua Tanggal" -> fallback ke hari ini.
+  const tglPacking = filterMode === 'custom' && dateFrom ? dateFrom : todayStr()
+
   const ordersHariIni = orders.filter(o => {
     if (o.status === 'Batal') return false
-    if (o.delivery_date) return o.delivery_date === todayStr()
-    return isToday(o.created_at)
+    if (o.delivery_date) return o.delivery_date === tglPacking
+    // Tanpa delivery_date: anggap dikirim di hari yang sama dengan order dibuat
+    return o.created_at && o.created_at.startsWith(tglPacking)
   })
 
   const downloadPackingPDF = () => {
@@ -173,7 +179,7 @@ export default function RekapOrder() {
     const margin = 12
     let y = 16
 
-    const tglLabel = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+    const tglLabel = new Date(tglPacking + 'T00:00:00').toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(16)
@@ -281,7 +287,7 @@ export default function RekapOrder() {
       doc.text(`Total Omset Hari Ini: Rp ${totalRevenue.toLocaleString('id-ID')}`, margin, y)
     }
 
-    doc.save(`Packing-Delivery-${todayStr()}.pdf`)
+    doc.save(`Packing-Delivery-${tglPacking}.pdf`)
   }
 
   return (
@@ -292,7 +298,7 @@ export default function RekapOrder() {
           <p>Semua pesanan — historis & hari ini</p>
         </div>
         <button onClick={downloadPackingPDF} className="btn btn-primary" style={{ background: '#2D5016' }}>
-          🖨️ Download PDF Packing Hari Ini ({ordersHariIni.length})
+          🖨️ Download PDF Packing ({ordersHariIni.length}) — {new Date(tglPacking + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
         </button>
       </div>
 
