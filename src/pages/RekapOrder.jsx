@@ -9,7 +9,12 @@ const STATUS_COLOR = {
   Dikirim: '#2D5016', Selesai: '#28A745', Batal: '#C0392B'
 }
 
-const todayStr = () => new Date().toISOString().split('T')[0]
+const todayStr = () => {
+  const now = new Date()
+  // Gunakan timezone WIB (UTC+7) bukan UTC, supaya tidak salah tanggal
+  const wib = new Date(now.getTime() + (7 * 60 * 60 * 1000))
+  return wib.toISOString().split('T')[0]
+}
 
 export default function RekapOrder() {
   const [orders, setOrders] = useState([])
@@ -477,7 +482,7 @@ export default function RekapOrder() {
                           {!o.delivery_date && isToday(o.created_at) && (
                             <span style={{ display: 'block', fontSize: 9, background: '#E8F5E0', color: '#2D5016', borderRadius: 4, padding: '1px 4px', fontWeight: 700, marginTop: 2 }}>HARI INI</span>
                           )}
-                          {o.delivery_date === new Date().toISOString().split('T')[0] && (
+                          {o.delivery_date === todayStr() && (
                             <span style={{ display: 'block', fontSize: 9, background: '#E8F5E0', color: '#2D5016', borderRadius: 4, padding: '1px 4px', fontWeight: 700, marginTop: 2 }}>KIRIM HARI INI</span>
                           )}
                         </td>
