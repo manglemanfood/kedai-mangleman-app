@@ -53,11 +53,10 @@ export default function Target() {
 
     const [targetRes, ordersRes, expRes, itemsRes, histRes] = await Promise.all([
       supabase.from('monthly_targets').select('*').eq('month', month).eq('year', year).maybeSingle(),
-      supabase.from('orders').select('*').gte('created_at', from + 'T00:00:00+07:00').lte('created_at', to + 'T23:59:59+07:00'),
+      supabase.from('orders').select('*').or(`and(delivery_date.gte.${from},delivery_date.lte.${to}),and(delivery_date.is.null,created_at.gte.${from}T00:00:00+07:00,created_at.lte.${to}T23:59:59+07:00)`),
       supabase.from('expenses').select('*').gte('expense_date', from).lte('expense_date', to),
-      supabase.from('order_items').select('*, orders!inner(created_at,status)').gte('orders.created_at', from + 'T00:00:00+07:00').lte('orders.created_at', to + 'T23:59:59+07:00'),
-      // History 6 bulan terakhir
-      supabase.from('orders').select('created_at, total_amount, status').gte('created_at', `${year}-01-01T00:00:00+07:00`).lte('created_at', to + 'T23:59:59+07:00'),
+      supabase.from('order_items').select('*, orders!inner(created_at,delivery_date,status)').or(`and(orders.delivery_date.gte.${from},orders.delivery_date.lte.${to}),and(orders.delivery_date.is.null,orders.created_at.gte.${from}T00:00:00+07:00,orders.created_at.lte.${to}T23:59:59+07:00)`),
+      supabase.from('orders').select('created_at, delivery_date, total_amount, status').gte('created_at', `${year}-01-01T00:00:00+07:00`).lte('created_at', to + 'T23:59:59+07:00'),
     ])
 
     // Target
@@ -90,7 +89,10 @@ export default function Target() {
     const days = []
     for (let d = 1; d <= lastDay; d++) {
       const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`
-      const dayOrders = validOrders.filter(o => toWIBDate(o.created_at) === dateStr)
+      const dayOrders = validOrders.filter(o => {
+        const tgl = o.delivery_date || toWIBDate(o.created_at)
+        return tgl === dateStr
+      })
       days.push({
         date: dateStr, day: d,
         revenue: dayOrders.reduce((s, o) => s + o.total_amount, 0),
@@ -111,7 +113,8 @@ export default function Target() {
     // History per bulan
     const monthlyRevenue = {}
     ;(histRes.data || []).filter(o => o.status !== 'Batal').forEach(o => {
-      const m = toWIBDate(o.created_at)?.slice(0, 7)
+      const tgl = o.delivery_date || toWIBDate(o.created_at)
+      const m = tgl?.slice(0, 7)
       if (m) monthlyRevenue[m] = (monthlyRevenue[m] || 0) + o.total_amount
     })
     setHistoryData(Object.entries(monthlyRevenue).sort())
