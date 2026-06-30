@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import jsPDF from 'jspdf'
 
 const formatRp = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 const STATUS_FLOW = ['Baru', 'Diproses', 'Dikemas', 'Dikirim', 'Selesai']
@@ -159,11 +160,140 @@ export default function RekapOrder() {
   const isToday = (dt) => dt && dt.startsWith(todayStr())
   const isPast  = (dt) => dt && dt < todayStr() + 'T00:00:00'
 
+  // Daftar order yang dikirim hari ini (delivery_date hari ini, atau tanpa delivery_date tapi dibuat hari ini)
+  const ordersHariIni = orders.filter(o => {
+    if (o.status === 'Batal') return false
+    if (o.delivery_date) return o.delivery_date === todayStr()
+    return isToday(o.created_at)
+  })
+
+  const downloadPackingPDF = () => {
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+    const pageWidth = doc.internal.pageSize.getWidth()
+    const margin = 12
+    let y = 16
+
+    const tglLabel = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(16)
+    doc.text('KEDAI MANGLEMAN', margin, y)
+    y += 6
+    doc.setFontSize(12)
+    doc.text('Rekap Order Packing & Delivery', margin, y)
+    y += 6
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(10)
+    doc.text(`Tanggal Kirim: ${tglLabel}`, margin, y)
+    y += 4
+    doc.text(`Total Order: ${ordersHariIni.length}`, margin, y)
+    y += 6
+    doc.setLineWidth(0.4)
+    doc.line(margin, y, pageWidth - margin, y)
+    y += 6
+
+    if (ordersHariIni.length === 0) {
+      doc.setFont('helvetica', 'italic')
+      doc.text('Tidak ada order untuk dikirim hari ini.', margin, y)
+    }
+
+    ordersHariIni.forEach((o, idx) => {
+      // Page break check
+      const estHeight = 14 + (o.order_items?.length || 0) * 5 + 8
+      if (y + estHeight > 280) {
+        doc.addPage()
+        y = 16
+      }
+
+      // Box header per order
+      doc.setFillColor(245, 245, 240)
+      doc.setDrawColor(200, 200, 200)
+      doc.roundedRect(margin, y, pageWidth - margin * 2, 8, 1, 1, 'FD')
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(11)
+      doc.text(`${idx + 1}. ${o.customer_name}`, margin + 3, y + 5.5)
+      doc.setFontSize(9)
+      doc.setFont('helvetica', 'normal')
+      const statusText = `[${o.status}]`
+      doc.text(statusText, pageWidth - margin - doc.getTextWidth(statusText) - 3, y + 5.5)
+      y += 11
+
+      doc.setFontSize(9.5)
+      doc.setFont('helvetica', 'normal')
+      doc.text(`📍 ${o.gedung} - Lantai ${o.lantai}`, margin + 3, y)
+      y += 4.5
+      if (o.phone) {
+        doc.text(`📱 ${o.phone}`, margin + 3, y)
+        y += 4.5
+      }
+
+      // Items
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(9.5)
+      doc.text('Item Order:', margin + 3, y)
+      y += 4.5
+      doc.setFont('helvetica', 'normal')
+      ;(o.order_items || []).forEach(item => {
+        doc.text(`• ${item.product_name} x${item.quantity}`, margin + 6, y)
+        const itemTotal = 'Rp ' + Number(item.subtotal || 0).toLocaleString('id-ID')
+        doc.text(itemTotal, pageWidth - margin - doc.getTextWidth(itemTotal) - 3, y)
+        y += 4.5
+      })
+
+      if (o.catatan) {
+        doc.setFont('helvetica', 'italic')
+        doc.setFontSize(9)
+        doc.text(`Catatan: ${o.catatan}`, margin + 3, y)
+        y += 4.5
+        doc.setFont('helvetica', 'normal')
+      }
+
+      // Total
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(10)
+      const totalText = 'Total: Rp ' + Number(o.total_amount || 0).toLocaleString('id-ID')
+      doc.text(totalText, pageWidth - margin - doc.getTextWidth(totalText) - 3, y)
+      y += 4
+
+      // Checkbox packing
+      doc.setDrawColor(0, 0, 0)
+      doc.rect(margin + 3, y, 4, 4)
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(9)
+      doc.text('Sudah dipacking', margin + 9, y + 3.2)
+      doc.rect(margin + 50, y, 4, 4)
+      doc.text('Sudah dikirim', margin + 56, y + 3.2)
+      y += 9
+
+      doc.setDrawColor(220, 220, 220)
+      doc.setLineWidth(0.2)
+      doc.line(margin, y, pageWidth - margin, y)
+      y += 5
+    })
+
+    // Footer summary
+    if (ordersHariIni.length > 0) {
+      if (y + 20 > 280) { doc.addPage(); y = 16 }
+      y += 2
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(11)
+      const totalRevenue = ordersHariIni.reduce((s, o) => s + (o.total_amount || 0), 0)
+      doc.text(`Total Omset Hari Ini: Rp ${totalRevenue.toLocaleString('id-ID')}`, margin, y)
+    }
+
+    doc.save(`Packing-Delivery-${todayStr()}.pdf`)
+  }
+
   return (
     <div>
-      <div className="page-header">
-        <h1>Rekap Order 📋</h1>
-        <p>Semua pesanan — historis & hari ini</p>
+      <div className="page-header flex-between" style={{ flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <h1>Rekap Order 📋</h1>
+          <p>Semua pesanan — historis & hari ini</p>
+        </div>
+        <button onClick={downloadPackingPDF} className="btn btn-primary" style={{ background: '#2D5016' }}>
+          🖨️ Download PDF Packing Hari Ini ({ordersHariIni.length})
+        </button>
       </div>
 
       {/* Stats */}
