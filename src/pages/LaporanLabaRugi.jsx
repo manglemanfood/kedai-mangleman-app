@@ -46,6 +46,7 @@ export default function LaporanLabaRugi() {
   const [topProducts, setTopProducts] = useState([])
   const [cashIn, setCashIn] = useState([])
   const [cashOut, setCashOut] = useState([])
+  const [paymentBreakdown, setPaymentBreakdown] = useState({ Cash: 0, QRIS: 0, Transfer: 0 })
 
   const getRange = useCallback(() => {
     if (periodMode === 'bulan') {
@@ -117,6 +118,14 @@ export default function LaporanLabaRugi() {
       dailyCashOut[e.expense_date] = (dailyCashOut[e.expense_date] || 0) + e.amount
     })
 
+    // Breakdown per metode bayar
+    const pb = { Cash: 0, QRIS: 0, Transfer: 0 }
+    validOrders.forEach(o => {
+      const m = o.payment_method || 'Cash'
+      if (pb[m] !== undefined) pb[m] += o.total_amount || 0
+      else pb['Cash'] += o.total_amount || 0
+    })
+
     setRevenue(totalRevenue)
     setHpp(totalHPP)
     setExpenses(expData)
@@ -124,6 +133,7 @@ export default function LaporanLabaRugi() {
     setTopProducts(top)
     setCashIn(Object.entries(dailyCashIn).sort())
     setCashOut(Object.entries(dailyCashOut).sort())
+    setPaymentBreakdown(pb)
     setLoading(false)
   }, [getRange])
 
@@ -312,6 +322,31 @@ export default function LaporanLabaRugi() {
                     <div style={{ fontSize: 11, color: '#888' }}>{s.sub}</div>
                   </div>
                 ))}
+              </div>
+
+              {/* Breakdown Metode Bayar */}
+              <div className="card mb-2" style={{ padding: '1rem' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#1A2E0A', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>💳 Breakdown Metode Pembayaran</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                  {[
+                    { key: 'Cash', icon: '💵', color: '#16A34A', bg: '#F0FDF4' },
+                    { key: 'QRIS', icon: '📲', color: '#7C3AED', bg: '#F5F3FF' },
+                    { key: 'Transfer', icon: '🏦', color: '#0369A1', bg: '#F0F9FF' },
+                  ].map(m => {
+                    const pct = revenue > 0 ? Math.round((paymentBreakdown[m.key] || 0) / revenue * 100) : 0
+                    return (
+                      <div key={m.key} style={{ background: m.bg, borderRadius: 10, padding: '12px 14px', border: `1px solid ${m.color}22` }}>
+                        <div style={{ fontSize: 18, marginBottom: 4 }}>{m.icon}</div>
+                        <div style={{ fontSize: 11, color: '#888', fontWeight: 600, marginBottom: 2 }}>{m.key}</div>
+                        <div style={{ fontSize: 15, fontWeight: 800, color: m.color }}>{formatRp(paymentBreakdown[m.key] || 0)}</div>
+                        <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{pct}% dari total</div>
+                        <div style={{ marginTop: 6, height: 4, background: '#e5e7eb', borderRadius: 2 }}>
+                          <div style={{ width: `${pct}%`, height: '100%', background: m.color, borderRadius: 2 }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
 
               <div className="grid-2">
