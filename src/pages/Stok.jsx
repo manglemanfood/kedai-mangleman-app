@@ -13,6 +13,22 @@ function convertToBase(qtyUsed, unitResep, unitBeli) {
   return qtyUsed
 }
 
+// Hitung yield rate (%) dari berat mentah vs berat matang
+function calcYieldRate(beratMentah, beratMatang) {
+  const m = parseFloat(beratMentah) || 0
+  const j = parseFloat(beratMatang) || 0
+  if (m <= 0) return 100
+  return Math.round((j / m) * 1000) / 10 // 1 desimal
+}
+
+// Harga efektif per satuan SETELAH disesuaikan susut masak
+// Misal beli 1000gr @ Rp45.000, yield 50% -> harga efektif = Rp45.000 / 500gr = Rp90/gr (bukan Rp45/gr)
+function calcHargaEfektif(lastPrice, yieldRate) {
+  const yr = parseFloat(yieldRate) || 100
+  if (yr >= 100 || yr <= 0) return lastPrice
+  return lastPrice / (yr / 100)
+}
+
 export default function Stok() {
   const [materials, setMaterials] = useState([])
   const [products, setProducts] = useState([])
@@ -21,7 +37,7 @@ export default function Stok() {
   const [tab, setTab] = useState('bahan')
   const [showForm, setShowForm] = useState(false)
   const [editItem, setEditItem] = useState(null)
-  const [form, setForm] = useState({ name: '', unit: 'kg', stock_qty: '', min_stock: '', last_price: '' })
+  const [form, setForm] = useState({ name: '', unit: 'kg', stock_qty: '', min_stock: '', last_price: '', berat_mentah: '', berat_matang: '', catatan_susut: '' })
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [searchBahan, setSearchBahan] = useState('')
@@ -77,20 +93,31 @@ export default function Stok() {
 
   const openAdd = () => {
     setEditItem(null)
-    setForm({ name: '', unit: 'kg', stock_qty: '', min_stock: '', last_price: '' })
+    setForm({ name: '', unit: 'kg', stock_qty: '', min_stock: '', last_price: '', berat_mentah: '', berat_matang: '', catatan_susut: '' })
     setShowForm(true)
   }
 
   const openEdit = (item) => {
     setEditItem(item)
-    setForm({ name: item.name, unit: item.unit, stock_qty: item.stock_qty, min_stock: item.min_stock, last_price: item.last_price })
+    setForm({
+      name: item.name, unit: item.unit, stock_qty: item.stock_qty, min_stock: item.min_stock, last_price: item.last_price,
+      berat_mentah: item.berat_mentah || '', berat_matang: item.berat_matang || '', catatan_susut: item.catatan_susut || ''
+    })
     setShowForm(true)
   }
 
   const save = async () => {
     if (!form.name) return alert('Nama bahan wajib diisi!')
     setSaving(true)
-    const data = { name: form.name, unit: form.unit, stock_qty: parseFloat(form.stock_qty) || 0, min_stock: parseFloat(form.min_stock) || 0, last_price: parseInt(form.last_price) || 0 }
+    const yieldRate = calcYieldRate(form.berat_mentah, form.berat_matang)
+    const data = {
+      name: form.name, unit: form.unit, stock_qty: parseFloat(form.stock_qty) || 0, min_stock: parseFloat(form.min_stock) || 0,
+      last_price: parseInt(form.last_price) || 0,
+      berat_mentah: parseFloat(form.berat_mentah) || 0,
+      berat_matang: parseFloat(form.berat_matang) || 0,
+      yield_rate: yieldRate,
+      catatan_susut: form.catatan_susut || '',
+    }
     if (editItem) await supabase.from('raw_materials').update(data).eq('id', editItem.id)
     else await supabase.from('raw_materials').insert(data)
     setShowForm(false)
@@ -200,6 +227,41 @@ export default function Stok() {
                 <input className="form-control" type="number" value={form.last_price} onChange={e => setForm(f => ({ ...f, last_price: e.target.value }))} />
               </div>
             </div>
+
+            <div style={{ borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 10, marginBottom: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#C8881A', marginBottom: 6 }}>⚖️ Susut Masak (Opsional)</div>
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
+                Isi jika bahan menyusut saat diproses (direbus/digoreng/dibersihkan). Contoh: babat mentah 1000gr setelah direbus jadi 500gr.
+              </p>
+              <div className="grid-2">
+                <div className="form-group">
+                  <label className="form-label">Berat Mentah (gr)</label>
+                  <input className="form-control" type="number" step="0.01" placeholder="cth: 1000" value={form.berat_mentah} onChange={e => setForm(f => ({ ...f, berat_mentah: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Berat Matang (gr)</label>
+                  <input className="form-control" type="number" step="0.01" placeholder="cth: 500" value={form.berat_matang} onChange={e => setForm(f => ({ ...f, berat_matang: e.target.value }))} />
+                </div>
+              </div>
+              {form.berat_mentah > 0 && form.berat_matang > 0 && (
+                <div style={{ background: '#FFF3D6', borderRadius: 8, padding: 10, marginTop: 4, marginBottom: 10 }}>
+                  <div style={{ fontSize: 12, color: '#C8881A' }}>
+                    Yield rate: <strong>{calcYieldRate(form.berat_mentah, form.berat_matang)}%</strong>
+                  </div>
+                  {form.last_price > 0 && (
+                    <div style={{ fontSize: 12, color: '#C8881A', marginTop: 2 }}>
+                      Harga efektif setelah susut: <strong>{formatRp(Math.round(calcHargaEfektif(parseInt(form.last_price) || 0, calcYieldRate(form.berat_mentah, form.berat_matang))))}/{form.unit}</strong>
+                      <span style={{ color: '#888', marginLeft: 4 }}>(harga beli {formatRp(form.last_price)}/{form.unit} dibagi yield rate)</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="form-group">
+                <label className="form-label">Catatan Susut</label>
+                <input className="form-control" placeholder="cth: direbus 30 menit sampai empuk" value={form.catatan_susut} onChange={e => setForm(f => ({ ...f, catatan_susut: e.target.value }))} />
+              </div>
+            </div>
+
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn btn-outline" style={{ flex: 1 }} onClick={() => setShowForm(false)}>Batal</button>
               <button className="btn btn-primary" style={{ flex: 2 }} onClick={save} disabled={saving}>{saving ? 'Menyimpan...' : '💾 Simpan'}</button>
@@ -247,6 +309,14 @@ export default function Stok() {
                                       </span>
                                     )}
                                   </span>
+                                )}
+                                {m.yield_rate > 0 && m.yield_rate < 100 && (
+                                  <div style={{ marginTop: 4, background: '#FFF3D6', borderRadius: 6, padding: '4px 8px', display: 'inline-block' }}>
+                                    <span style={{ fontSize: 11, fontWeight: 700, color: '#C8881A' }}>⚖️ Susut {m.yield_rate}%</span>
+                                    <span style={{ fontSize: 11, color: '#C8881A', marginLeft: 6 }}>
+                                      → Harga efektif: <strong>{formatRp(Math.round(calcHargaEfektif(m.hpp_fifo > 0 ? m.hpp_fifo : m.last_price, m.yield_rate)))}/{m.unit}</strong>
+                                    </span>
+                                  </div>
                                 )}
                               </div>
                             )}
