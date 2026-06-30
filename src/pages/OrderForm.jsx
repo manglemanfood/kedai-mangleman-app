@@ -84,7 +84,7 @@ export default function OrderForm() {
 
   // Aturan free item berdasarkan qty ricebowl
   // FREE_RULES dibuat dinamis di dalam komponen (pakai ricebowlQty)
-  const [info, setInfo] = useState({ name: '', gedung: '', lantai: '', phone: '', catatan: '' })
+  const [info, setInfo] = useState({ name: '', gedung: '', lantai: '', phone: '', catatan: '', payment_method: 'Cash' })
   const [loading, setLoading] = useState(false)
   const [orderNum, setOrderNum] = useState('')
   const [error, setError] = useState('')
@@ -360,6 +360,8 @@ export default function OrderForm() {
         catatan: info.catatan,
         total_amount: total,
         status: 'Baru',
+        payment_method: info.payment_method || 'Cash',
+        payment_status: 'Lunas',
         delivery_date: deliveryDate || null,
       }).select().single()
 
@@ -610,6 +612,25 @@ export default function OrderForm() {
               <textarea placeholder="Contoh: Tidak pakai sambal, tambah nasi" value={info.catatan}
                 onChange={e => setInfo(i => ({ ...i, catatan: e.target.value }))} rows={2}
                 style={{ width: '100%', padding: '12px 14px', border: '1.5px solid #E5E0D8', borderRadius: 10, fontSize: 14, outline: 'none', resize: 'none', boxSizing: 'border-box' }} />
+            </div>
+
+            {/* Metode Bayar */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#666', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Metode Pembayaran</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {['Cash', 'QRIS', 'Transfer'].map(m => (
+                  <button key={m} onClick={() => setInfo(i => ({ ...i, payment_method: m }))}
+                    style={{
+                      flex: 1, padding: '10px 0', border: '2px solid',
+                      borderColor: info.payment_method === m ? '#2D5016' : '#E5E0D8',
+                      borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                      background: info.payment_method === m ? '#E8F5E0' : '#fff',
+                      color: info.payment_method === m ? '#2D5016' : '#888',
+                    }}>
+                    {m === 'Cash' ? '💵 Cash' : m === 'QRIS' ? '📲 QRIS' : '🏦 Transfer'}
+                  </button>
+                ))}
+              </div>
             </div>
             <button onClick={() => { if (!info.name || !info.gedung || !info.lantai) { alert('Nama, Gedung, dan Lantai wajib diisi!'); return } setStep(2) }}
               style={{ width: '100%', padding: 14, background: '#E8A838', color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
@@ -973,6 +994,9 @@ export default function OrderForm() {
               <div style={{ fontSize: 13, color: '#666' }}>{info.gedung} · Lantai {info.lantai}</div>
               {info.phone && <div style={{ fontSize: 13, color: '#666' }}>📱 {info.phone}</div>}
               {info.catatan && <div style={{ fontSize: 13, color: '#888', marginTop: 4, fontStyle: 'italic' }}>"{info.catatan}"</div>}
+              <div style={{ marginTop: 8, background: '#E8F0FF', borderRadius: 8, padding: '6px 10px', fontSize: 13, color: '#1e40af', fontWeight: 600 }}>
+                {info.payment_method === 'Cash' ? '💵' : info.payment_method === 'QRIS' ? '📲' : '🏦'} Bayar: {info.payment_method}
+              </div>
               {deliveryDate && (
                 <div style={{ marginTop: 8, background: '#E8F5E0', borderRadius: 8, padding: '6px 10px', fontSize: 13, color: '#2D5016', fontWeight: 600 }}>
                   📅 Dikirim besok: {new Date(deliveryDate+'T00:00:00').toLocaleDateString('id-ID', { weekday:'long', day:'numeric', month:'long', year:'numeric' })}
