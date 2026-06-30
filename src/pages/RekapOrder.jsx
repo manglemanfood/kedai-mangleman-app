@@ -182,109 +182,132 @@ export default function RekapOrder() {
     const tglLabel = new Date(tglPacking + 'T00:00:00').toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(16)
+    doc.setFontSize(17)
     doc.text('KEDAI MANGLEMAN', margin, y)
-    y += 6
-    doc.setFontSize(12)
-    doc.text('Rekap Order Packing & Delivery', margin, y)
-    y += 6
+    y += 6.5
     doc.setFont('helvetica', 'normal')
+    doc.setFontSize(12)
+    doc.setTextColor(60, 60, 60)
+    doc.text('Rekap Order Packing & Delivery', margin, y)
+    y += 7
+    doc.setTextColor(0, 0, 0)
     doc.setFontSize(10)
-    doc.text(`Tanggal Kirim: ${tglLabel}`, margin, y)
-    y += 4
-    doc.text(`Total Order: ${ordersHariIni.length}`, margin, y)
+    doc.text(`Tanggal Kirim : ${tglLabel}`, margin, y)
+    y += 5
+    doc.text(`Total Order   : ${ordersHariIni.length}`, margin, y)
     y += 6
-    doc.setLineWidth(0.4)
+    doc.setLineWidth(0.5)
+    doc.setDrawColor(45, 80, 22)
     doc.line(margin, y, pageWidth - margin, y)
-    y += 6
+    y += 7
 
     if (ordersHariIni.length === 0) {
       doc.setFont('helvetica', 'italic')
-      doc.text('Tidak ada order untuk dikirim hari ini.', margin, y)
+      doc.setFontSize(10)
+      doc.setTextColor(110, 110, 110)
+      doc.text('Tidak ada order untuk dikirim pada tanggal ini.', margin, y)
+      doc.setTextColor(0, 0, 0)
     }
 
     ordersHariIni.forEach((o, idx) => {
       // Page break check
-      const estHeight = 14 + (o.order_items?.length || 0) * 5 + 8
+      const estHeight = 16 + (o.order_items?.length || 0) * 5.5 + 10
       if (y + estHeight > 280) {
         doc.addPage()
         y = 16
       }
 
       // Box header per order
-      doc.setFillColor(245, 245, 240)
-      doc.setDrawColor(200, 200, 200)
-      doc.roundedRect(margin, y, pageWidth - margin * 2, 8, 1, 1, 'FD')
+      doc.setFillColor(243, 243, 237)
+      doc.setDrawColor(210, 210, 200)
+      doc.setLineWidth(0.3)
+      doc.roundedRect(margin, y, pageWidth - margin * 2, 9, 1.2, 1.2, 'FD')
       doc.setFont('helvetica', 'bold')
-      doc.setFontSize(11)
-      doc.text(`${idx + 1}. ${o.customer_name}`, margin + 3, y + 5.5)
+      doc.setFontSize(12)
+      doc.setTextColor(26, 46, 10)
+      doc.text(`${idx + 1}. ${o.customer_name}`, margin + 3.5, y + 6)
       doc.setFontSize(9)
-      doc.setFont('helvetica', 'normal')
-      const statusText = `[${o.status}]`
-      doc.text(statusText, pageWidth - margin - doc.getTextWidth(statusText) - 3, y + 5.5)
-      y += 11
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(45, 80, 22)
+      const statusText = o.status.toUpperCase()
+      doc.text(statusText, pageWidth - margin - doc.getTextWidth(statusText) - 3.5, y + 6)
+      doc.setTextColor(0, 0, 0)
+      y += 13
 
-      doc.setFontSize(9.5)
+      doc.setFontSize(10)
       doc.setFont('helvetica', 'normal')
-      doc.text(`📍 ${o.gedung} - Lantai ${o.lantai}`, margin + 3, y)
-      y += 4.5
+      doc.text(`Lokasi  : ${o.gedung} - Lantai ${o.lantai}`, margin + 3.5, y)
+      y += 5
       if (o.phone) {
-        doc.text(`📱 ${o.phone}`, margin + 3, y)
-        y += 4.5
+        doc.text(`No. HP  : ${o.phone}`, margin + 3.5, y)
+        y += 5
       }
+      y += 1
 
       // Items
       doc.setFont('helvetica', 'bold')
       doc.setFontSize(9.5)
-      doc.text('Item Order:', margin + 3, y)
-      y += 4.5
+      doc.text('Item Order', margin + 3.5, y)
+      y += 5
       doc.setFont('helvetica', 'normal')
+      doc.setFontSize(9.5)
       ;(o.order_items || []).forEach(item => {
-        doc.text(`• ${item.product_name} x${item.quantity}`, margin + 6, y)
+        doc.text(`-  ${item.product_name}  x${item.quantity}`, margin + 6, y)
         const itemTotal = 'Rp ' + Number(item.subtotal || 0).toLocaleString('id-ID')
-        doc.text(itemTotal, pageWidth - margin - doc.getTextWidth(itemTotal) - 3, y)
-        y += 4.5
+        doc.text(itemTotal, pageWidth - margin - doc.getTextWidth(itemTotal) - 3.5, y)
+        y += 5
       })
 
       if (o.catatan) {
+        y += 0.5
         doc.setFont('helvetica', 'italic')
         doc.setFontSize(9)
-        doc.text(`Catatan: ${o.catatan}`, margin + 3, y)
-        y += 4.5
+        doc.setTextColor(90, 90, 90)
+        doc.text(`Catatan : ${o.catatan}`, margin + 3.5, y)
+        doc.setTextColor(0, 0, 0)
+        y += 5
         doc.setFont('helvetica', 'normal')
       }
 
       // Total
+      y += 1
       doc.setFont('helvetica', 'bold')
-      doc.setFontSize(10)
-      const totalText = 'Total: Rp ' + Number(o.total_amount || 0).toLocaleString('id-ID')
-      doc.text(totalText, pageWidth - margin - doc.getTextWidth(totalText) - 3, y)
-      y += 4
+      doc.setFontSize(11)
+      const totalText = 'Total : Rp ' + Number(o.total_amount || 0).toLocaleString('id-ID')
+      doc.text(totalText, pageWidth - margin - doc.getTextWidth(totalText) - 3.5, y)
+      y += 6
 
       // Checkbox packing
-      doc.setDrawColor(0, 0, 0)
-      doc.rect(margin + 3, y, 4, 4)
+      doc.setDrawColor(60, 60, 60)
+      doc.setLineWidth(0.35)
+      doc.rect(margin + 3.5, y - 3.2, 4, 4)
       doc.setFont('helvetica', 'normal')
-      doc.setFontSize(9)
-      doc.text('Sudah dipacking', margin + 9, y + 3.2)
-      doc.rect(margin + 50, y, 4, 4)
-      doc.text('Sudah dikirim', margin + 56, y + 3.2)
-      y += 9
+      doc.setFontSize(9.5)
+      doc.text('Sudah dipacking', margin + 10, y)
+      doc.rect(margin + 55, y - 3.2, 4, 4)
+      doc.text('Sudah dikirim', margin + 61.5, y)
+      y += 7
 
-      doc.setDrawColor(220, 220, 220)
+      doc.setDrawColor(225, 225, 218)
       doc.setLineWidth(0.2)
       doc.line(margin, y, pageWidth - margin, y)
-      y += 5
+      y += 6
     })
 
     // Footer summary
     if (ordersHariIni.length > 0) {
       if (y + 20 > 280) { doc.addPage(); y = 16 }
       y += 2
+      doc.setDrawColor(45, 80, 22)
+      doc.setLineWidth(0.5)
+      doc.line(margin, y, pageWidth - margin, y)
+      y += 7
       doc.setFont('helvetica', 'bold')
-      doc.setFontSize(11)
+      doc.setFontSize(12)
+      doc.setTextColor(26, 46, 10)
       const totalRevenue = ordersHariIni.reduce((s, o) => s + (o.total_amount || 0), 0)
-      doc.text(`Total Omset Hari Ini: Rp ${totalRevenue.toLocaleString('id-ID')}`, margin, y)
+      doc.text(`Total Omset : Rp ${totalRevenue.toLocaleString('id-ID')}`, margin, y)
+      doc.setTextColor(0, 0, 0)
     }
 
     doc.save(`Packing-Delivery-${tglPacking}.pdf`)
