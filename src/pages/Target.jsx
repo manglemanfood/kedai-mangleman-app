@@ -37,7 +37,7 @@ export default function Target() {
   const [year, setYear] = useState(today.getFullYear())
   const [target, setTarget] = useState({ target_revenue: '', target_orders: '', target_profit: '', notes: '' })
   const [savedTarget, setSavedTarget] = useState(null)
-  const [actual, setActual] = useState({ revenue: 0, orders: 0, expense: 0, profit: 0 })
+  const [actual, setActual] = useState({ revenue: 0, orders: 0, expense: 0, hpp: 0, profit: 0 })
   const [dailyData, setDailyData] = useState([])
   const [topProducts, setTopProducts] = useState([])
   const [saving, setSaving] = useState(false)
@@ -51,12 +51,13 @@ export default function Target() {
     const lastDay = getDaysInMonth(year, month)
     const to = `${year}-${String(month).padStart(2,'0')}-${lastDay}`
 
-    const [targetRes, ordersRes, expRes, itemsRes, histRes] = await Promise.all([
+    const [targetRes, ordersRes, expRes, itemsRes, histRes, productsRes] = await Promise.all([
       supabase.from('monthly_targets').select('*').eq('month', month).eq('year', year).maybeSingle(),
       supabase.from('orders').select('*').or(`and(delivery_date.gte.${from},delivery_date.lte.${to}),and(delivery_date.is.null,created_at.gte.${from}T00:00:00+07:00,created_at.lte.${to}T23:59:59+07:00)`),
       supabase.from('expenses').select('*').gte('expense_date', from).lte('expense_date', to),
       supabase.from('order_items').select('*, orders!inner(created_at,delivery_date,status)').or(`and(orders.delivery_date.gte.${from},orders.delivery_date.lte.${to}),and(orders.delivery_date.is.null,orders.created_at.gte.${from}T00:00:00+07:00,orders.created_at.lte.${to}T23:59:59+07:00)`),
       supabase.from('orders').select('created_at, delivery_date, total_amount, status').gte('created_at', `${year}-01-01T00:00:00+07:00`).lte('created_at', to + 'T23:59:59+07:00'),
+      supabase.from('products').select('id, hpp'),
     ])
 
     // Target
@@ -78,11 +79,22 @@ export default function Target() {
     const totalRevenue = validOrders.reduce((s, o) => s + o.total_amount, 0)
     const totalExpense = (expRes.data || []).reduce((s, e) => s + e.amount, 0)
 
+    // Hitung HPP dari order items × hpp per produk
+    const prodMap = {}
+    ;(productsRes.data || []).forEach(p => { prodMap[p.id] = p.hpp || 0 })
+    const totalHPP = (itemsRes.data || [])
+      .filter(i => i.orders?.status !== 'Batal')
+      .reduce((s, i) => s + (prodMap[i.product_id] || 0) * (i.quantity || 0), 0)
+
+    // Laba Bersih = Omset - HPP - Pengeluaran Operasional
+    const totalProfit = totalRevenue - totalHPP - totalExpense
+
     setActual({
       revenue: totalRevenue,
       orders: validOrders.length,
       expense: totalExpense,
-      profit: totalRevenue - totalExpense,
+      hpp: totalHPP,
+      profit: totalProfit,
     })
 
     // Daily data untuk chart
@@ -170,7 +182,7 @@ export default function Target() {
     const saranList = []
     if (pRevenue < 50 && hariTersisa < 10) saranList.push({ icon: '🚨', text: `Waktu tersisa ${hariTersisa} hari, target masih ${pRevenue}%. Perlu promosi agresif atau tambah jam operasional.`, type: 'danger' })
     if (targetPerHari > revenuePerHari * 1.5 && hariTersisa > 0) saranList.push({ icon: '📢', text: `Perlu tambah Rp ${formatRp(targetPerHari)}/hari untuk kejar target. Coba promosi atau diskon bundle.`, type: 'warning' })
-    if (actual.expense > actual.profit && actual.revenue > 0) saranList.push({ icon: '✂️', text: 'Beban operasional lebih besar dari profit. Evaluasi pengeluaran yang bisa dikurangi.', type: 'danger' })
+    if ((actual.expense + actual.hpp) > actual.revenue && actual.revenue > 0) saranList.push({ icon: '✂️', text: 'Total biaya (HPP + operasional) lebih besar dari omset. Evaluasi harga jual atau kurangi biaya.', type: 'danger' })
     if (topProducts[0] && topProducts[0].revenue / actual.revenue > 0.5) saranList.push({ icon: '⭐', text: `${topProducts[0].name} menyumbang >50% revenue. Pastikan stoknya selalu ada!`, type: 'info' })
     if (avgRevenuePerOrder < 20000) saranList.push({ icon: '💡', text: 'Rata-rata order masih kecil. Coba tambahkan paket bundling atau up-selling.', type: 'info' })
     if (pRevenue >= 100) saranList.push({ icon: '🎯', text: 'Target tercapai! Pertimbangkan naikkan target bulan depan untuk terus bertumbuh.', type: 'success' })
