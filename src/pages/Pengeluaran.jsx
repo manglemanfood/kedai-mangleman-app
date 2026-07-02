@@ -26,7 +26,7 @@ const emptyForm = {
   // Berat/qty yang dibeli
   qty_beli: '',
   satuan_beli: 'gram',
-  sync_stok: false,
+  sync_stok: true,
 }
 
 export default function Pengeluaran() {
@@ -79,7 +79,8 @@ export default function Pengeluaran() {
       expense_date: e.expense_date,
       qty_beli: e.qty_beli || '',
       satuan_beli: e.satuan_beli || 'gram',
-      sync_stok: false,
+      sync_stok: true,
+      manual_material_id: '',
     })
     setSyncMsg('')
     setShowForm(true)
@@ -118,7 +119,10 @@ export default function Pengeluaran() {
       const cleanDesc = descLower.replace(/[()]/g, ' ').trim() // hapus tanda kurung
       const descWords = cleanDesc.split(/\s+/).filter(w => w.length > 2) // kata-kata dalam deskripsi
 
-      const matchMat = materials.find(m => {
+      // Cari bahan baku: prioritas manual pilihan user, fallback ke fuzzy match
+      const matchMat = form.manual_material_id
+        ? materials.find(m => m.id === form.manual_material_id)
+        : materials.find(m => {
         const mName = m.name.toLowerCase()
         const mWords = mName.split(/\s+/).filter(w => w.length > 2)
 
@@ -135,7 +139,7 @@ export default function Pengeluaran() {
         if (matchCount >= 2) return true
         if (matchCount >= 1 && mWords.length === 1 && mWords[0].length > 4) return true
         return false
-      })
+        })
 
       let matId = null
       let matName = desc
@@ -418,11 +422,30 @@ export default function Pengeluaran() {
                 </label>
               )}
 
-              {form.sync_stok && (
-                <div style={{ marginTop: 8, fontSize: 12, color: '#2D5016', fontStyle: 'italic' }}>
-                  Sistem akan mencocokkan nama deskripsi dengan nama bahan di menu Stok dan menambah stoknya otomatis.
+              {/* Pilih bahan manual jika sync aktif */}
+              {form.sync_stok && form.qty_beli && (
+                <div style={{ marginTop: 10, padding: '10px 12px', background: '#F0FDF4', borderRadius: 8, border: '1px solid #bbf7d0' }}>
+                  <div style={{ fontSize: 12, color: '#2D5016', fontWeight: 600, marginBottom: 6 }}>
+                    🎯 Pilih Bahan (opsional — lebih akurat dari auto-detect)
+                  </div>
+                  <select
+                    value={form.manual_material_id || ''}
+                    onChange={e => setForm(f => ({ ...f, manual_material_id: e.target.value }))}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #86efac', fontSize: 13, background: '#fff' }}
+                  >
+                    <option value="">-- Biarkan sistem auto-detect dari nama --</option>
+                    {materials.map(m => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} (stok: {m.stock_qty} {m.unit})
+                      </option>
+                    ))}
+                  </select>
+                  <div style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>
+                    Jika dipilih manual, sistem langsung update bahan ini tanpa cari-cari nama.
+                  </div>
                 </div>
               )}
+
             </div>
 
             <div className="grid-2">
