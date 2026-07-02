@@ -115,30 +115,28 @@ export default function Pengeluaran() {
       const desc = form.description.trim()
       const descLower = desc.toLowerCase()
 
+      // Fetch fresh dari DB supaya tidak pakai stale state
+      const { data: freshMaterials } = await supabase.from('raw_materials').select('*').order('name')
+      const allMats = freshMaterials || []
+
       // Cari bahan baku yang cocok berdasarkan nama (fuzzy match)
-      const cleanDesc = descLower.replace(/[()]/g, ' ').trim() // hapus tanda kurung
-      const descWords = cleanDesc.split(/\s+/).filter(w => w.length > 2) // kata-kata dalam deskripsi
+      const cleanDesc = descLower.replace(/[()]/g, ' ').trim()
+      const descWords = cleanDesc.split(/\s+/).filter(w => w.length > 2)
 
-      // Cari bahan baku: prioritas manual pilihan user, fallback ke fuzzy match
+      // Prioritas: manual pilihan user → fuzzy match
       const matchMat = form.manual_material_id
-        ? materials.find(m => m.id === form.manual_material_id)
-        : materials.find(m => {
-        const mName = m.name.toLowerCase()
-        const mWords = mName.split(/\s+/).filter(w => w.length > 2)
-
-        // 1. Exact match
-        if (mName === cleanDesc) return true
-        // 2. Deskripsi mengandung nama bahan lengkap
-        if (cleanDesc.includes(mName)) return true
-        // 3. Nama bahan mengandung deskripsi (atau sebaliknya)
-        if (mName.includes(cleanDesc)) return true
-        // 4. Semua kata dari nama bahan ada di deskripsi
-        if (mWords.length > 0 && mWords.every(w => cleanDesc.includes(w))) return true
-        // 5. Mayoritas kata deskripsi cocok dengan nama bahan (min 2 kata)
-        const matchCount = descWords.filter(w => mName.includes(w)).length
-        if (matchCount >= 2) return true
-        if (matchCount >= 1 && mWords.length === 1 && mWords[0].length > 4) return true
-        return false
+        ? allMats.find(m => m.id === form.manual_material_id)
+        : allMats.find(m => {
+          const mName = m.name.toLowerCase()
+          const mWords = mName.split(/\s+/).filter(w => w.length > 2)
+          if (mName === cleanDesc) return true
+          if (cleanDesc.includes(mName)) return true
+          if (mName.includes(cleanDesc)) return true
+          if (mWords.length > 0 && mWords.every(w => cleanDesc.includes(w))) return true
+          const matchCount = descWords.filter(w => mName.includes(w)).length
+          if (matchCount >= 2) return true
+          if (matchCount >= 1 && mWords.length === 1 && mWords[0].length > 4) return true
+          return false
         })
 
       let matId = null
@@ -199,8 +197,8 @@ export default function Pengeluaran() {
           notes: `Pembelian: ${desc} ${qty} ${form.satuan_beli} @ Rp ${Math.round(costPerUnit).toLocaleString('id-ID')}`,
         })
 
-        const { data: freshMat } = await supabase.from('raw_materials').select('*').order('name')
-        setMaterials(freshMat || [])
+        const { data: refetchMat } = await supabase.from('raw_materials').select('*').order('name')
+        setMaterials(refetchMat || [])
 
         const hppInfo = existingBatches.length > 0
           ? ` · HPP FIFO: Rp ${hppFifo.toFixed(0)}/gram (rata-rata ${existingBatches.length + 1} batch)`
