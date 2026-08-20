@@ -14,8 +14,7 @@ const KEDAI_INFO = {
   alamat: 'Perum BDB 3 Karadenan - Cibinong - Kab. Bogor',
   wa: '0853-5329-2224',
   rekening: [
-    { bank: 'BCA', no: '1234567890', atas_nama: 'Mang Leman' },
-    { bank: 'BRI', no: '0987654321', atas_nama: 'Mang Leman' },
+    { bank: 'BRI', no: '0421 0109 2200 509', atas_nama: 'Bisma J Zakaria' },
   ]
 }
 
