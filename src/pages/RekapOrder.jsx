@@ -9,11 +9,281 @@ const STATUS_COLOR = {
   Dikirim: '#2D5016', Selesai: '#28A745', Batal: '#C0392B'
 }
 
+// Info Kedai
+const KEDAI_INFO = {
+  nama: 'Kedai Mang Leman',
+  alamat: 'Perum BDB 3 Karadenan - Cibinong - Kab. Bogor',
+  wa: '085353292224',
+  rekening: [
+    { bank: 'BCA', no: '1234567890', atas_nama: 'Mang Leman' },
+    { bank: 'BRI', no: '0987654321', atas_nama: 'Mang Leman' },
+  ]
+}
+
 const todayStr = () => {
   const now = new Date()
-  // Gunakan timezone WIB (UTC+7) bukan UTC, supaya tidak salah tanggal
   const wib = new Date(now.getTime() + (7 * 60 * 60 * 1000))
   return wib.toISOString().split('T')[0]
+}
+
+const generateInvoiceNumber = (order) => {
+  const date = new Date(order.created_at)
+  const wib = new Date(date.getTime() + 7 * 60 * 60 * 1000)
+  const dd = String(wib.getDate()).padStart(2, '0')
+  const mm = String(wib.getMonth() + 1).padStart(2, '0')
+  const yy = String(wib.getFullYear()).slice(2)
+  const num = order.order_number?.slice(-4) || order.id.slice(0, 4).toUpperCase()
+  return `INV/${yy}${mm}${dd}/${num}`
+}
+
+const downloadInvoicePDF = (order) => {
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+  const pageW = doc.internal.pageSize.getWidth()
+  const pageH = doc.internal.pageSize.getHeight()
+  const margin = 18
+  const contentW = pageW - margin * 2
+  const isLunas = order.status === 'Selesai'
+  const invNo = generateInvoiceNumber(order)
+
+  // ── HEADER BACKGROUND ──
+  doc.setFillColor(26, 46, 10)
+  doc.rect(0, 0, pageW, 42, 'F')
+
+  // Nama Kedai
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(20)
+  doc.setTextColor(232, 168, 56)
+  doc.text(KEDAI_INFO.nama.toUpperCase(), margin, 16)
+
+  // Tagline / alamat di header
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8.5)
+  doc.setTextColor(200, 220, 180)
+  doc.text(KEDAI_INFO.alamat, margin, 23)
+  doc.text(`WA: ${KEDAI_INFO.wa}`, margin, 29)
+
+  // Label INVOICE
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(22)
+  doc.setTextColor(255, 255, 255)
+  const invLabel = 'INVOICE'
+  doc.text(invLabel, pageW - margin - doc.getTextWidth(invLabel), 18)
+
+  // Nomor invoice
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  doc.setTextColor(200, 220, 180)
+  doc.text(invNo, pageW - margin - doc.getTextWidth(invNo), 25)
+
+  // ── INFO INVOICE & CUSTOMER ──
+  let y = 52
+
+  // Box kiri - Tagihan Kepada
+  doc.setFillColor(247, 247, 242)
+  doc.setDrawColor(220, 220, 210)
+  doc.setLineWidth(0.3)
+  doc.roundedRect(margin, y, contentW * 0.52, 38, 2, 2, 'FD')
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(8)
+  doc.setTextColor(120, 120, 120)
+  doc.text('TAGIHAN KEPADA', margin + 5, y + 7)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(12)
+  doc.setTextColor(26, 46, 10)
+  doc.text(order.customer_name, margin + 5, y + 15)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  doc.setTextColor(60, 60, 60)
+  doc.text(`${order.gedung} - Lantai ${order.lantai}`, margin + 5, y + 22)
+  if (order.phone) {
+    doc.text(`WA/HP: ${order.phone}`, margin + 5, y + 29)
+  }
+
+  // Box kanan - Detail Invoice
+  const rightX = margin + contentW * 0.56
+  const rightW = contentW * 0.44
+  doc.setFillColor(247, 247, 242)
+  doc.roundedRect(rightX, y, rightW, 38, 2, 2, 'FD')
+
+  const rows = [
+    ['No. Invoice', invNo],
+    ['Tanggal', new Date(order.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })],
+    ['Metode Bayar', order.payment_method || 'Transfer'],
+    ['Status', isLunas ? 'LUNAS' : 'BELUM LUNAS'],
+  ]
+  rows.forEach(([label, val], i) => {
+    const ry = y + 8 + i * 7.5
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    doc.setTextColor(100, 100, 100)
+    doc.text(label, rightX + 5, ry)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8.5)
+    if (label === 'Status') {
+      doc.setTextColor(isLunas ? 39, 174, 96 : 192, 57, 43)
+    } else {
+      doc.setTextColor(30, 30, 30)
+    }
+    const valText = String(val)
+    doc.text(valText, rightX + rightW - 5 - doc.getTextWidth(valText), ry)
+  })
+
+  y += 46
+
+  // ── TABEL ITEM ──
+  // Header tabel
+  doc.setFillColor(26, 46, 10)
+  doc.rect(margin, y, contentW, 8, 'F')
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9)
+  doc.setTextColor(255, 255, 255)
+  doc.text('No', margin + 3, y + 5.5)
+  doc.text('Nama Produk', margin + 12, y + 5.5)
+  doc.text('Qty', margin + contentW * 0.55, y + 5.5)
+  doc.text('Harga Satuan', margin + contentW * 0.65, y + 5.5)
+  doc.text('Subtotal', pageW - margin - doc.getTextWidth('Subtotal') - 3, y + 5.5)
+  y += 8
+
+  // Baris item
+  const items = order.order_items || []
+  items.forEach((item, idx) => {
+    const rowH = 8
+    const bg = idx % 2 === 0 ? [255, 255, 255] : [248, 248, 244]
+    doc.setFillColor(...bg)
+    doc.rect(margin, y, contentW, rowH, 'F')
+
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(50, 50, 50)
+    doc.text(String(idx + 1), margin + 3, y + 5.5)
+    doc.text(item.product_name, margin + 12, y + 5.5)
+
+    const qty = String(item.quantity)
+    doc.text(qty, margin + contentW * 0.55 + 5, y + 5.5)
+
+    const hargaSatuan = item.quantity > 0
+      ? 'Rp ' + Number((item.subtotal || 0) / item.quantity).toLocaleString('id-ID')
+      : '-'
+    doc.text(hargaSatuan, margin + contentW * 0.65, y + 5.5)
+
+    const sub = 'Rp ' + Number(item.subtotal || 0).toLocaleString('id-ID')
+    doc.text(sub, pageW - margin - doc.getTextWidth(sub) - 3, y + 5.5)
+    y += rowH
+  })
+
+  // Garis bawah tabel
+  doc.setDrawColor(26, 46, 10)
+  doc.setLineWidth(0.5)
+  doc.line(margin, y, pageW - margin, y)
+  y += 6
+
+  // ── TOTAL ──
+  const totalBoxX = margin + contentW * 0.55
+  const totalBoxW = contentW * 0.45
+
+  // Subtotal row
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9.5)
+  doc.setTextColor(70, 70, 70)
+  doc.text('Subtotal', totalBoxX, y + 5)
+  const subtotalText = formatRp(order.total_amount)
+  doc.text(subtotalText, pageW - margin - doc.getTextWidth(subtotalText) - 3, y + 5)
+  y += 8
+
+  // Garis tipis
+  doc.setDrawColor(200, 200, 195)
+  doc.setLineWidth(0.2)
+  doc.line(totalBoxX, y, pageW - margin, y)
+  y += 5
+
+  // Total besar
+  doc.setFillColor(26, 46, 10)
+  doc.roundedRect(totalBoxX - 2, y, totalBoxW + 2, 12, 2, 2, 'F')
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(10)
+  doc.setTextColor(255, 255, 255)
+  doc.text('TOTAL', totalBoxX + 4, y + 8)
+  const totalText = formatRp(order.total_amount)
+  doc.setTextColor(232, 168, 56)
+  doc.setFontSize(12)
+  doc.text(totalText, pageW - margin - doc.getTextWidth(totalText) - 3, y + 8)
+  y += 18
+
+  // ── STEMPEL LUNAS (jika lunas) ──
+  if (isLunas) {
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(32)
+    doc.setTextColor(39, 174, 96)
+    doc.setLineWidth(2.5)
+    doc.setDrawColor(39, 174, 96)
+    // Rotasi stempel
+    doc.saveGraphicsState()
+    const cx = margin + contentW * 0.25
+    doc.text('✓ LUNAS', cx, y - 6, { angle: 10 })
+    doc.restoreGraphicsState()
+    doc.setLineWidth(0.3)
+  }
+
+  // ── INFO PEMBAYARAN ──
+  y = isLunas ? y + 2 : y
+  doc.setFillColor(235, 245, 228)
+  doc.setDrawColor(180, 220, 160)
+  doc.setLineWidth(0.3)
+  const payBoxH = isLunas ? 24 : 36
+  doc.roundedRect(margin, y, contentW * 0.52, payBoxH, 2, 2, 'FD')
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(8.5)
+  doc.setTextColor(26, 46, 10)
+  doc.text(isLunas ? '✅ Pembayaran Telah Diterima' : '💳 Informasi Pembayaran', margin + 5, y + 8)
+
+  if (isLunas) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    doc.setTextColor(60, 60, 60)
+    doc.text(`Terima kasih! Pembayaran sebesar ${formatRp(order.total_amount)}`, margin + 5, y + 15)
+    doc.text(`telah kami terima dengan baik.`, margin + 5, y + 21)
+  } else {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    doc.setTextColor(60, 60, 60)
+    doc.text('Transfer ke salah satu rekening berikut:', margin + 5, y + 15)
+    KEDAI_INFO.rekening.forEach((rek, i) => {
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(9)
+      doc.setTextColor(26, 46, 10)
+      doc.text(`${rek.bank}  ${rek.no}`, margin + 5, y + 22 + i * 7)
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(8)
+      doc.setTextColor(90, 90, 90)
+      doc.text(`a.n. ${rek.atas_nama}`, margin + 5, y + 27 + i * 7)
+    })
+  }
+
+  // ── CATATAN ──
+  if (order.catatan) {
+    const noteY = y + payBoxH + 6
+    doc.setFont('helvetica', 'italic')
+    doc.setFontSize(8.5)
+    doc.setTextColor(100, 100, 100)
+    doc.text(`Catatan: ${order.catatan}`, margin, noteY)
+    y = noteY
+  }
+
+  // ── FOOTER ──
+  const footerY = pageH - 18
+  doc.setDrawColor(26, 46, 10)
+  doc.setLineWidth(0.5)
+  doc.line(margin, footerY - 4, pageW - margin, footerY - 4)
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8)
+  doc.setTextColor(100, 100, 100)
+  doc.text(`${KEDAI_INFO.nama}  ·  ${KEDAI_INFO.alamat}  ·  WA: ${KEDAI_INFO.wa}`, pageW / 2, footerY, { align: 'center' })
+  doc.text('Terima kasih atas kepercayaan Anda! 🙏', pageW / 2, footerY + 5, { align: 'center' })
+
+  doc.save(`Invoice-${invNo.replace(/\//g, '-')}-${order.customer_name}.pdf`)
 }
 
 export default function RekapOrder() {
@@ -27,7 +297,6 @@ export default function RekapOrder() {
   const [updating, setUpdating] = useState(null)
   const [editOrder, setEditOrder] = useState(null)
   const [editForm, setEditForm] = useState({})
-  const [savingDelivery, setSavingDelivery] = useState(null)
   const [saving, setSaving] = useState(false)
   const autoFixRef = useRef(false)
 
@@ -41,7 +310,6 @@ export default function RekapOrder() {
 
       const td = todayStr()
 
-      // Filter berdasarkan delivery_date jika ada, fallback ke created_at
       if (mode === 'hari-ini') {
         q = q.or(
           `delivery_date.eq.${td},` +
@@ -59,7 +327,6 @@ export default function RekapOrder() {
           q = q.or(`delivery_date.lte.${to},and(delivery_date.is.null,created_at.lte.${to}T23:59:59+07:00)`)
         }
       }
-      // mode === 'semua' → no date filter
 
       if (status !== 'Semua') q = q.eq('status', status)
 
@@ -73,7 +340,6 @@ export default function RekapOrder() {
     setLoading(false)
   }
 
-  // Auto-fix past orders sekali saja
   useEffect(() => {
     const autoFix = async () => {
       if (autoFixRef.current) return
@@ -89,18 +355,15 @@ export default function RekapOrder() {
           .update({ status: 'Selesai', updated_at: new Date().toISOString() })
           .in('id', past.map(o => o.id))
       }
-      // Fetch after fix
       fetchOrders(filterMode, dateFrom, dateTo, filterStatus)
     }
     autoFix()
-  }, []) // hanya sekali saat mount
+  }, [])
 
-  // Re-fetch saat filter berubah
   useEffect(() => {
     fetchOrders(filterMode, dateFrom, dateTo, filterStatus)
   }, [filterMode, dateFrom, dateTo, filterStatus])
 
-  // Realtime
   useEffect(() => {
     const ch = supabase.channel('orders-rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
@@ -165,16 +428,11 @@ export default function RekapOrder() {
   const isToday = (dt) => dt && dt.startsWith(todayStr())
   const isPast  = (dt) => dt && dt < todayStr() + 'T00:00:00'
 
-  // Order yang masuk ke PDF Packing: gunakan delivery_date sebagai acuan utama.
-  // Jika filter aktif "Hari Ini" -> pakai tanggal hari ini.
-  // Jika filter "Pilih Tanggal" -> pakai dateFrom (tanggal kirim yang dipilih).
-  // Jika filter "Semua Tanggal" -> fallback ke hari ini.
   const tglPacking = filterMode === 'custom' && dateFrom ? dateFrom : todayStr()
 
   const ordersHariIni = orders.filter(o => {
     if (o.status === 'Batal') return false
     if (o.delivery_date) return o.delivery_date === tglPacking
-    // Tanpa delivery_date: anggap dikirim di hari yang sama dengan order dibuat
     return o.created_at && o.created_at.startsWith(tglPacking)
   })
 
@@ -215,14 +473,9 @@ export default function RekapOrder() {
     }
 
     ordersHariIni.forEach((o, idx) => {
-      // Page break check
       const estHeight = 16 + (o.order_items?.length || 0) * 5.5 + 10
-      if (y + estHeight > 280) {
-        doc.addPage()
-        y = 16
-      }
+      if (y + estHeight > 280) { doc.addPage(); y = 16 }
 
-      // Box header per order
       doc.setFillColor(243, 243, 237)
       doc.setDrawColor(210, 210, 200)
       doc.setLineWidth(0.3)
@@ -243,13 +496,9 @@ export default function RekapOrder() {
       doc.setFont('helvetica', 'normal')
       doc.text(`Lokasi  : ${o.gedung} - Lantai ${o.lantai}`, margin + 3.5, y)
       y += 5
-      if (o.phone) {
-        doc.text(`No. HP  : ${o.phone}`, margin + 3.5, y)
-        y += 5
-      }
+      if (o.phone) { doc.text(`No. HP  : ${o.phone}`, margin + 3.5, y); y += 5 }
       y += 1
 
-      // Items
       doc.setFont('helvetica', 'bold')
       doc.setFontSize(9.5)
       doc.text('Item Order', margin + 3.5, y)
@@ -274,7 +523,6 @@ export default function RekapOrder() {
         doc.setFont('helvetica', 'normal')
       }
 
-      // Total
       y += 1
       doc.setFont('helvetica', 'bold')
       doc.setFontSize(11)
@@ -282,7 +530,6 @@ export default function RekapOrder() {
       doc.text(totalText, pageWidth - margin - doc.getTextWidth(totalText) - 3.5, y)
       y += 6
 
-      // Checkbox packing
       doc.setDrawColor(60, 60, 60)
       doc.setLineWidth(0.35)
       doc.rect(margin + 3.5, y - 3.2, 4, 4)
@@ -299,7 +546,6 @@ export default function RekapOrder() {
       y += 6
     })
 
-    // Footer summary
     if (ordersHariIni.length > 0) {
       if (y + 20 > 280) { doc.addPage(); y = 16 }
       y += 2
@@ -347,7 +593,6 @@ export default function RekapOrder() {
 
       {/* Filter */}
       <div className="card mb-2" style={{ padding: '1rem' }}>
-        {/* Mode buttons */}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
           {[
             { key: 'hari-ini', label: '📅 Hari Ini' },
@@ -376,7 +621,6 @@ export default function RekapOrder() {
           </button>
         </div>
 
-        {/* Status filter */}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {['Semua','Baru','Diproses','Dikemas','Dikirim','Selesai','Batal'].map(s => (
             <button key={s} onClick={() => setFilterStatus(s)} className="btn btn-sm"
@@ -428,7 +672,7 @@ export default function RekapOrder() {
       )}
 
       {/* Table + Detail */}
-      <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 360px' : '1fr', gap: '1rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 380px' : '1fr', gap: '1rem' }}>
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           {loading ? (
             <div className="loading"><div className="spinner" /><span>Memuat order...</span></div>
@@ -466,14 +710,12 @@ export default function RekapOrder() {
                           {o.order_number?.slice(-8) || o.id.slice(0,6)}
                         </td>
                         <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-                          {/* Tanggal pengiriman */}
                           <div style={{ fontWeight: 600, color: '#1A2E0A' }}>
                             🚚 {o.delivery_date
                               ? new Date(o.delivery_date + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: '2-digit' })
                               : new Date(o.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: '2-digit' })
                             }
                           </div>
-                          {/* Tanggal order jika berbeda */}
                           {o.delivery_date && o.delivery_date !== o.created_at?.slice(0,10) && (
                             <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>
                               Order: {new Date(o.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
@@ -555,15 +797,43 @@ export default function RekapOrder() {
               {selected.phone && <div style={{ fontSize: 13 }}>📱 {selected.phone}</div>}
               {selected.catatan && <div style={{ fontSize: 12, fontStyle: 'italic', color: 'var(--text-muted)', marginTop: 4 }}>"{selected.catatan}"</div>}
             </div>
+
             {selected.order_items?.map(item => (
               <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
                 <span>{item.product_name} <span style={{ color: 'var(--text-muted)' }}>x{item.quantity}</span></span>
                 <span style={{ fontWeight: 600 }}>{formatRp(item.subtotal)}</span>
               </div>
             ))}
+
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0 0', fontWeight: 700, fontSize: 15, color: 'var(--primary-dark)' }}>
               <span>Total</span><span>{formatRp(selected.total_amount)}</span>
             </div>
+
+            {/* Status badge lunas */}
+            {selected.status === 'Selesai' && (
+              <div style={{ margin: '10px 0 4px', background: '#E8F5E0', border: '1.5px solid #28A745', borderRadius: 8, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 18 }}>✅</span>
+                <div>
+                  <div style={{ fontWeight: 700, color: '#28A745', fontSize: 13 }}>LUNAS</div>
+                  <div style={{ fontSize: 11, color: '#555' }}>Pembayaran telah diterima</div>
+                </div>
+              </div>
+            )}
+
+            {/* Tombol Invoice */}
+            <button
+              onClick={() => downloadInvoicePDF(selected)}
+              style={{
+                width: '100%', marginTop: 12, padding: '10px 0',
+                background: 'linear-gradient(135deg, #1A2E0A 0%, #2D5016 100%)',
+                color: '#fff', border: 'none', borderRadius: 10,
+                fontWeight: 700, fontSize: 14, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                boxShadow: '0 3px 10px rgba(26,46,10,0.3)'
+              }}>
+              🧾 Download Invoice PDF
+            </button>
+
             {!isPast(selected.created_at) && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
                 {STATUS_FLOW.map(s => (
