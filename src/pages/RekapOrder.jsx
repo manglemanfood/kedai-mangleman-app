@@ -121,7 +121,7 @@ const downloadInvoicePDF = (order) => {
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(8.5)
     if (label === 'Status') {
-      doc.setTextColor(isLunas ? 39, 174, 96 : 192, 57, 43)
+      if (isLunas) { doc.setTextColor(39, 174, 96) } else { doc.setTextColor(192, 57, 43) }
     } else {
       doc.setTextColor(30, 30, 30)
     }
